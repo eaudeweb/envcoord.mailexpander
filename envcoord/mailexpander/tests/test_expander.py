@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 from copy import deepcopy
-from eea.mailexpander.expander import Expander, RETURN_CODES, log
+from envcoord.mailexpander.expander import Expander, RETURN_CODES, log
 from mock import Mock
 from test_ldap_agent import StubbedLdapAgent
 import email
@@ -155,7 +155,7 @@ class ExpanderTest(unittest.TestCase):
             no_user
 
     def test_simplified_role(self):
-        from eea.mailexpander.expander import SimplifiedRole
+        from envcoord.mailexpander.expander import SimplifiedRole
 
         role = SimplifiedRole("eionet-nrc-biodivdata-mc-fr", '')
         assert role.split() == ['eionet', 'nrc', 'biodivdata', 'mc', 'fr']
@@ -219,8 +219,7 @@ class ExpanderTest(unittest.TestCase):
                     "cn=top-middle,cn=top,ou=Roles,o=EIONET,l=Europe":
                         {'permittedSender': ['owners',
                                              'members',
-                                             'parent_sender@example.com',
-                                             '*@eea.europa.eu'],
+                                             'parent_sender@example.com'],
                          'owner': ['parent_owner'],
                          'members': ['member_one'],
                          },
@@ -237,7 +236,6 @@ class ExpanderTest(unittest.TestCase):
         assert set(role_data['permittedSender']) == set(
             ['control',
              'parent_owner@example.com',
-             '*@eea.europa.eu',
              'parent_sender@example.com',
              'member_one@example.com',
              'root_parent_person@example.com'])

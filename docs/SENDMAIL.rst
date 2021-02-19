@@ -1,4 +1,4 @@
-eea.mailexpander sendmail configuration
+envcoord.mailexpander sendmail configuration
 =======================================
 
 This is a guide on how to configure the sendmail server to use this mailer.

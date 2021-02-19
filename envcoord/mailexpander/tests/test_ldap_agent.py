@@ -1,4 +1,4 @@
-from eea.mailexpander import ldap_agent
+from envcoord.mailexpander import ldap_agent
 from mock import Mock   #, patch    #, wraps
 import ldap
 import unittest

@@ -6,7 +6,7 @@ version = '0.16'
 tests_require = ['pytest', 'pytest-cov', 'mock']
 
 setup(
-    name='eea.mailexpander',
+    name='envcoord.mailexpander',
     version=version,
     description="Sendmail mailer with some LDAP checking",
     long_description="""This program acts as a sendmail mailer and allows
@@ -23,7 +23,7 @@ setup(
     zip_safe=False,
     entry_points={
         'console_scripts': [
-            'roleexpander = eea.mailexpander.expander:main',
+            'roleexpander = envcoord.mailexpander.expander:main',
         ]
     },
     install_requires=[],

@@ -8,18 +8,18 @@ log: syslog
 mailbox: /tmp/mailbox/
 
 ;no-reply email address
-no-reply: no-reply@eea.europa.eu
+no-reply: no-reply@envcoord.health.fgov.be
 no_owner_send_to: someone@example.com
 
 # roles containing this string will be skipped if not sent to directly
 filter_str: -gb
 # only apply the filter to roles starting with:
-roles_to_filter: eea,eionet
+# roles_to_filter: test, test2
 
 [ldap]
-ldap_server: ldaps://ldap.eionet.europa.eu:636
-users_dn: ou=Users,o=EIONET,l=Europe
-roles_dn: ou=Roles,o=EIONET,l=Europe
+ldap_server: ldap://127.0.0.1:368
+users_dn: ou=Users,ou=DATA,ou=america,o=IRCusers,dc=CIRCA,dc=local
+roles_dn: ou=DATA,ou=america,o=IRCroles,dc=CIRCA,dc=local
 encoding: utf-8
-user_dn: cn=Accounts Browser,o=EIONET,l=Europe
+user_dn: cn=Manager,dc=CIRCA,dc=local
 user_pw:

@@ -10,6 +10,6 @@ tar xzf /tmp/virtualenv.tgz -C ./
 /usr/bin/python2.7 $VENV --clear --system-site-packages ./
 
 bin/pip install -e .
-bin/pip install eea.mailexpander[testing]
+bin/pip install envcoord.mailexpander[testing]
 
 rm -rf ./virtualenv*

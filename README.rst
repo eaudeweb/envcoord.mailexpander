@@ -1,4 +1,4 @@
-eea.mailexpander
+envcoord.mailexpander
 ================
 
 https://svn.eionet.europa.eu/projects/Zope/ticket/3844
@@ -24,5 +24,5 @@ look for the return code with the "echo $?" bash command.
 
 Unit testing
 ------------
-Go to eea/mailexpander/tests and run the tests. You have to have the mock package installed.
+Go to envcoord/mailexpander/tests and run the tests. You have to have the mock package installed.
 
