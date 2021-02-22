@@ -12,7 +12,6 @@ no_owner_send_to: ccpie.ccim@health.fgov.be
 
 # no-reply email address
 no-reply: no-reply@envcoord.health.fgov.be
-no_owner_send_to: someone@example.com
 
 # roles containing this string will be skipped if not sent to directly
 ;filter_str: -gb

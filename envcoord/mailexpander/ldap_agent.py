@@ -40,11 +40,11 @@ class LdapAgent(object):
         # Example usage::
         #     >>> self._ancestor_roles_dn(
         #     ...
-        #     "cn=test-subtest,cn=test,"
+        #     "ou=test-subtest,ou=test,"
         #     "ou=Users,ou=DATA,ou=america,o=IRCusers,dc=CIRCA,dc=local")
-        #     ['cn=test-subtest,'
+        #     ['ou=test-subtest,'
         #      'ou=Users,ou=DATA,ou=america,o=IRCusers,dc=CIRCA,dc=local',
-        #      'cn=test,'
+        #      'ou=test,'
         #      'ou=Users,ou=DATA,ou=america,o=IRCusers,dc=CIRCA,dc=local']
 
         assert role_dn.endswith(',' + self._role_dn_suffix), "Invalid Role DN"
@@ -55,7 +55,7 @@ class LdapAgent(object):
         ancestors = []
         accumulator = self._role_dn_suffix
         for bit in dn_bits:
-            assert bit.startswith('cn=')
+            assert bit.startswith('ou=')
             accumulator = bit + "," + accumulator
             ancestors.insert(0, accumulator)
 
@@ -73,7 +73,7 @@ class LdapAgent(object):
 
         dn_start = ''
         for c in range(len(id_bits), 0, -1):
-            dn_start += 'cn=%s,' % '-'.join(id_bits[:c])
+            dn_start += 'ou=%s,' % '-'.join(id_bits[:c])
         return dn_start + self._role_dn_suffix
 
     def _user_id(self, user_dn):
@@ -194,8 +194,8 @@ class LdapAgent(object):
 
         current_bit = None
         for bit in dn_bits:
-            assert bit.startswith('cn=')
-            bit = bit[len('cn='):]
+            assert bit.startswith('ou=')
+            bit = bit[len('ou='):]
             if current_bit is None:
                 assert '-' not in bit
             else:
