@@ -1,7 +1,5 @@
 envcoord.mailexpander
-================
-
-https://svn.eionet.europa.eu/projects/Zope/ticket/3844
+=====================
 
 This program acts as a sendmail mailer and allows sending mails to a certain
 ldap group (role) based on a few rules.
@@ -17,7 +15,7 @@ in the inheritance chain.
 Usage/Installation
 ------------------
 
-To configure the sendmail see docs/SENDMAIL.rst
+To configure the sendmail see docs/POSTFIX.rst
 
 To test the program, run it with the -t switch (this will not send any email) and
 look for the return code with the "echo $?" bash command.
@@ -25,4 +23,3 @@ look for the return code with the "echo $?" bash command.
 Unit testing
 ------------
 Go to envcoord/mailexpander/tests and run the tests. You have to have the mock package installed.
-

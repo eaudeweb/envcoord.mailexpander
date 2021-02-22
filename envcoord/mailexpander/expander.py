@@ -11,9 +11,7 @@ import fcntl
 import getopt
 import ldap
 import logging
-import operator
 import os
-import re
 import smtplib
 import string
 import sys
@@ -25,7 +23,7 @@ __version__ = """$Id: expander.py 40888 2017-04-05 09:47:09Z tiberich $"""
 try:
     from email.mime.text import MIMEText
     from email.mime.multipart import MIMEMultipart
-except ImportError as e:      # pragma: no cover
+except ImportError:      # pragma: no cover
     from email.MIMEText import MIMEText
     from email.MIMEMultipart import MIMEMultipart
 
@@ -70,30 +68,6 @@ stream_handler.setFormatter(formatter)
 log.addHandler(stream_handler)
 
 
-class SimplifiedRole(object):
-    """
-    A simple way of representing and addressing attributes
-    of an NFP/NRC Role
-
-    """
-
-    def __init__(self, role_id, description):
-        m = re.match(r'^eionet-(nfp|nrc)-(.*)(mc|cc)-([^-]*)$', role_id,
-                     re.IGNORECASE)
-        if m:
-            self.type = m.groups()[0].lower()
-            self.country = m.groups()[3].lower()
-            self.role_id = role_id
-            self.description = description
-        else:
-            raise ValueError("Not a valid NFP/NRC role")
-        if not self.country or (self.type not in ('nfp', 'nrc')):
-            raise ValueError("Not a valid NFP/NRC role")
-
-    def split(self, s='-'):
-        return self.role_id.split(s)
-
-
 def log_exceptions(func):
     @wraps(func)
     def wrapper(*args, **kwargs):
@@ -126,30 +100,6 @@ class Expander(object):
             'roles_to_filter', '')
         if roles_to_filter:
             self.roles_to_filter = roles_to_filter.strip().split(',')
-
-    def _get_nfp_roles(self, uid):
-        out = []
-        filterstr = ("(&(objectClass=groupOfUniqueNames)(uniqueMember=%s))" %
-                     self.agent._user_dn(uid))
-        nfp_roles = self.agent.filter_roles(
-            "eionet-nfp-*-*", prefix_dn="cn=eionet-nfp,cn=eionet",
-            filterstr=filterstr, attrlist=("description",))
-
-        for nfp in nfp_roles:
-            try:
-                role = SimplifiedRole(nfp[0], nfp[1]['description'][0])
-            except ValueError:
-                continue
-            else:
-                out.append(role)
-
-        return sorted(out, key=operator.attrgetter('role_id'))
-
-    def get_nfp_countries(self, uid):
-        """ Returns a list of country codes where user (uid) is NFP
-        """
-
-        return [role.country for role in self._get_nfp_roles(uid)]
 
     @log_exceptions
     def expand(self, from_email, role_email, content, debug_mode=False):
@@ -196,7 +146,7 @@ class Expander(object):
         except (ldap.NO_SUCH_OBJECT, ValueError):
             log.info("%r role not found in ldap", role)
             return RETURN_CODES['EX_NOUSER']
-        except Exception, e:
+        except Exception as e:
             log.error("%r role not found exception, %r" % (role, e))
             return RETURN_CODES['EX_NOUSER']
 
@@ -339,7 +289,7 @@ class Expander(object):
                         for owner_dn in role_info['owner']:
                             try:
                                 owner = self.agent._query(owner_dn)
-                            except Exception, e:
+                            except Exception as e:
                                 # Log that we couldn't get the email.
                                 log.exception(
                                     "Invalid `owner` DN: %s; %s" % (owner_dn,
@@ -358,7 +308,7 @@ class Expander(object):
             for person_dn in role_info.get('permittedPerson', []):
                 try:
                     email = self.agent._query(person_dn)['mail'][0]
-                except Exception, e:
+                except Exception as e:
                     # Log that we couldn't get the email.
                     log.exception("Invalid DN: %s; %s" (person_dn, e))
                     continue
@@ -391,9 +341,6 @@ class Expander(object):
 
         permittedPerson -- DN of a user (match the user's email with
         `from_email`)
-
-        * Checking to see if the user is an NFP for the country for that
-        role email. (Ticket http://taskman.eionet.europa.eu/issues/22529)
         """
 
         role_data = self.add_inherited_senders(role_id=role,
@@ -420,7 +367,7 @@ class Expander(object):
                         for owner_dn in role_data['owner']:
                             try:
                                 owner = self.agent._query(owner_dn)
-                            except Exception, e:
+                            except Exception as e:
                                 # Log that we couldn't get the email.
                                 log.exception(
                                     "Invalid `owner` DN: %s; %s" (owner_dn, e))
@@ -443,55 +390,12 @@ class Expander(object):
                     persons_emails = self.agent._query(permitted_dn)['mail']
                     if from_email in map(str.lower, persons_emails):
                         return True
-                except Exception, e:
+                except Exception as e:
                     # Log that we couldn't get the email.
                     log.exception("Invalid DN: %s; %s" % (permitted_dn, e))
                     continue
 
-        if role.startswith('eionet-nrc'):
-            country = self._country_for_role(role)
-            if country:
-                if self.is_nfp_for_country(from_email, country):
-                    return True
-
         return False
-
-    def is_nfp_for_country(self, from_email, country):
-        """ Email belongs to member of NFP role for that country code?
-        """
-
-        user_id = self.agent.get_userid_for_email(from_email)
-        if not user_id:
-            return False
-
-        nfp_roles = self.get_nfp_roles_for_country(country)
-        for role_id in nfp_roles:
-            role_data = self.agent.get_role(role_id)
-            for user_dn in role_data.get('uniqueMember', []):
-                if user_id == self.agent._user_id(user_dn):
-                    return True
-
-        return False
-
-    def _country_for_role(self, role):
-        try:
-            _, _, _, _, country = role.split('-')
-        except IndexError:
-            return None
-        return country
-
-    def get_nfp_roles_for_country(self, country_code):
-        out = []
-        filterstr = "(objectClass=groupOfUniqueNames)"
-        nfp_roles = self.agent.filter_roles(
-            "eionet-nfp-*-%s" % country_code,
-            prefix_dn="cn=eionet-nfp,cn=eionet", filterstr=filterstr,
-            attrlist=("description",))
-
-        for nfp in nfp_roles:
-            out.append(nfp[0])
-
-        return sorted(out)
 
     def send_confirmation_email(self, subject, to_email, role):
         """ If sending emails succeeded send a confirmation email to sender and
@@ -527,7 +431,7 @@ class Expander(object):
                 log.error("Failed to send confirmation email "
                           "using smtplib to %s", to_email)
                 return RETURN_CODES['EX_PROTOCOL']
-            except Exception, e:
+            except Exception as e:
                 log.exception("Smtplib error %s", e)
                 return RETURN_CODES['EX_UNAVAILABLE']
         finally:
@@ -588,7 +492,7 @@ class Expander(object):
                     log.error(
                         "Failed to send emails using smtplib to %r", emails)
                     return RETURN_CODES['EX_PROTOCOL']
-                except Exception, e:
+                except Exception as e:
                     log.exception("Smtplib error %s" % e)
                     return RETURN_CODES['EX_UNAVAILABLE']
             finally:
@@ -613,8 +517,8 @@ class Expander(object):
             # if we get an EAGAIN or EACCES error
             # except IOError, e:
             #     if e.errno in (errno.EAGAIN, errno.EACCES): ...
-        except Exception, e:
-            log.error("Unable to acquire exclusive lock on %s; e" %
+        except Exception as e:
+            log.error("Unable to acquire exclusive lock on %s; %s" %
                       (self.archivefile, e))
             return
         mboxfd.write('From ' + from_email + '  ' + time.asctime() + '\n')
@@ -626,8 +530,8 @@ class Expander(object):
 
 
 def usage():
-    print ("%s [-t] -r [to-email] -f [from-email] -c [config-file] "
-           "-l [ldap-host] -o [logfile]") % sys.argv[0]
+    print("%s [-t] -r [to-email] -f [from-email] -c [config-file] "
+          "-l [ldap-host] -o [logfile]") % sys.argv[0]
     # You can't log when you have just removed the log handler
     # log.error("Invalid arguments %r" % sys.argv)
     sys.exit(RETURN_CODES['EX_USAGE'])
@@ -701,15 +605,15 @@ def main():
         # Open connection with the ldap
         try:
             agent = LdapAgent(**ldap_config)
-        except Exception, e:
+        except Exception as e:
             log.error("Cannot connect to LDAP %s; %s" % (
                 ldap_config['ldap_server'], e))
             return RETURN_CODES['EX_TEMPFAIL']
 
         expander = Expander(agent, **expander_config)
         return expander.expand(from_email, role_email, content, debug_mode)
-    except Exception, e:
-        log.exception("e")
+    except Exception as e:
+        log.exception(e)
         return RETURN_CODES['EX_SOFTWARE']
 
 

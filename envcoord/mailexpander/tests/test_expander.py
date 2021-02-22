@@ -9,7 +9,6 @@ import email
 import ldap
 import logging
 import os
-import pytest
 import smtplib
 import unittest
 
@@ -153,18 +152,6 @@ class ExpanderTest(unittest.TestCase):
         assert self.expander.expand('user_one@example.com', 'test', "") == ok
         assert self.expander.expand('user_one@example.com', 'test1', "") == \
             no_user
-
-    def test_simplified_role(self):
-        from envcoord.mailexpander.expander import SimplifiedRole
-
-        role = SimplifiedRole("eionet-nrc-biodivdata-mc-fr", '')
-        assert role.split() == ['eionet', 'nrc', 'biodivdata', 'mc', 'fr']
-
-        with pytest.raises(ValueError):
-            SimplifiedRole("eionet-etc-biodivdata-mc-fr", "")
-
-        with pytest.raises(ValueError):
-            SimplifiedRole("eionet-nrc-biodivdata-mc-fr-etc", '')
 
     def test_can_expand_by_inheritance(self):
         """ Test if people specified in above hierarchy can expand

@@ -18,10 +18,12 @@ class LdapAgent(object):
         self.conn.simple_bind_s(config['user_dn'].strip(),
                                 config['user_pw'].strip())
         self._encoding = config.get('encoding', 'utf-8')
-        self._user_dn_suffix = config.get('users_dn',
-                                          "ou=Users,o=EIONET,l=Europe")
-        self._role_dn_suffix = config.get('roles_dn',
-                                          "ou=Roles,o=EIONET,l=Europe")
+        self._user_dn_suffix = config.get(
+            'users_dn',
+            'ou=Users,ou=DATA,ou=america,o=IRCusers,dc=CIRCA,dc=local')
+        self._role_dn_suffix = config.get(
+            'roles_dn',
+            'ou=DATA,ou=america,o=IRCroles,dc=CIRCA,dc=local')
 
     def connect(self):
         conn = ldap.initialize(self.ldap_server)
@@ -37,9 +39,13 @@ class LdapAgent(object):
 
         # Example usage::
         #     >>> self._ancestor_roles_dn(
-        #     ...   "cn=eionet-nfp,cn=eionet,ou=Roles,o=EIONET,l=Europe")
-        #     ['cn=eionet-nfp,ou=Roles,o=EIONET,l=Europe',
-        #      'cn=eionet,ou=Roles,o=EIONET,l=Europe']
+        #     ...
+        #     "cn=test-subtest,cn=test,"
+        #     "ou=Users,ou=DATA,ou=america,o=IRCusers,dc=CIRCA,dc=local")
+        #     ['cn=test-subtest,'
+        #      'ou=Users,ou=DATA,ou=america,o=IRCusers,dc=CIRCA,dc=local',
+        #      'cn=test,'
+        #      'ou=Users,ou=DATA,ou=america,o=IRCusers,dc=CIRCA,dc=local']
 
         assert role_dn.endswith(',' + self._role_dn_suffix), "Invalid Role DN"
         role_dn_start = role_dn[: - (len(self._role_dn_suffix) + 1)]
