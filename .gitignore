@@ -4,6 +4,7 @@ bin/*
 htmlcov/*
 include/*
 lib/*
+log/*
 lib64
 *.diff
 pip-selfcheck.json

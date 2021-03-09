@@ -58,6 +58,20 @@ RETURN_CODES = {
     'EX_CONFIG':       78,  # configuration error
 }
 
+IGNORE_LIST = ['zope', 'environment', 'grassharper']
+
+DUMMY_MAIL = """MIME-Version: 1.0
+Content-Type: text/plain; charset="utf-8"
+Content-Transfer-Encoding: quoted-printable
+To: test-administration@envcoord.health.fgov.be
+From: test@gmail.com
+Subject: Administrative notification for object: Test
+Date: Wed, 24 Feb 2021 14:44:09 -0000
+Message-Id: <161417784985.1874.5852255042338435954.repoze.sendmail@localhost.localdomain>
+X-Actually-From: =?utf-8?q?test=40gmail=2Ecom?=
+X-Actually-To: test-administration@envcoord.health.fgov.be
+
+The item "Test" has been edited."""
 
 sys.tracebacklimit = 0
 log = logging.getLogger('rolesexpander')
@@ -92,7 +106,8 @@ class Expander(object):
         self.archivefile = config.get('mailbox', None)
         also_string = config.get('also_send_to', '')
         self.also_send_to = map(string.strip, also_string.split(','))
-        self.noreply = config.get('no_reply', 'no-reply@eea.europa.eu')
+        self.noreply = config.get('no_reply',
+                                  'no-reply@envcoord.health.fgov.be')
         self.no_owner_send_to = config.get('no_owner_send_to', '').strip()
         self.filter_str = config.get('filter_str', '').strip()
         self.roles_to_filter = []
@@ -158,6 +173,8 @@ class Expander(object):
                 retval = self.send_emails(from_email, owner_data['mail'],
                                           content)
                 if retval != RETURN_CODES['EX_OK']:
+                    log.error("Error %s while sending to %s",
+                              retval, owner_data['mail'])
                     return retval
             if not owners:
                 log.info("No owner found, sending to %s",
@@ -167,13 +184,18 @@ class Expander(object):
                         retval = self.send_emails(
                             from_email, [self.no_owner_send_to], content)
                         if retval != RETURN_CODES['EX_OK']:
+                            log.error("Error %s while sending to %s",
+                                      retval, self.no_owner_send_to)
                             return retval
                     else:
+                        log.error("The configuration misses a default email "
+                                  "for roles with no owners")
                         return RETURN_CODES['EX_CONFIG']
             return RETURN_CODES['EX_OK']
 
         # Check if from_email can expand
         if self.can_expand(from_email, role, role_data) is False:
+            log.info("%s cannot send to %s@envcoord", from_email, role)
             return RETURN_CODES['EX_NOPERM']
 
         # Add the necessary headers such as Received and modify the subject
@@ -250,6 +272,8 @@ class Expander(object):
                 retval = self.send_emails(
                     'owner-' + role_email, emails, content)
                 if retval != RETURN_CODES['EX_OK']:
+                    log.error("Error %s while sending to %s",
+                              retval, self.no_owner_send_to)
                     return retval
             try:
                 retval = self.send_confirmation_email(
@@ -450,11 +474,12 @@ class Expander(object):
             return RETURN_CODES['EX_OK']
         try:
             # This should be secure check:
-            # http://docs.python.org/library/subprocess.html#using-the-subprocess-module
+            # http://docs.python.org/library/subprocess.html
+            # #using-the-subprocess-module
             # It turns out that sendmail splits the addresses on space,
             # eventhough there is one address per argument. See RFC5322 section
-            # 3.4 Try: /usr/sbin/sendmail 'soren.roug @eea.europa.eu' and it
-            # will complain about the address. We therefore clean them with
+            # 3.4 Try: /usr/sbin/sendmail 'test @envcoord.health.fgov.be' and
+            # it will complain about the address. We therefore clean them with
             # smtplib.quoteaddr
             quotedemails = map(smtplib.quoteaddr, emails)
             ps = Popen([self.sendmail_path,
@@ -553,7 +578,6 @@ def main():
     try:
         opts = dict(opts)
         from_email = opts['-f']
-        role_email = opts['-r']
         if '-c' in opts:
             config = ConfigParser()
             config.read([opts['-c']])
@@ -587,7 +611,8 @@ def main():
             formatter = logging.Formatter(
                 "%(asctime)s - %(levelname)s - %(message)s")
             log_handler.setFormatter(formatter)
-        log.setLevel(logging.INFO)
+        if not debug_mode:
+            log.setLevel(logging.INFO)
         log.addHandler(log_handler)
 
     log.debug("=========== starting rolesmailer ============")
@@ -601,7 +626,17 @@ def main():
                 if not buffer:
                     break
                 content += buffer
-
+        em = email.message_from_string(content)
+        try:
+            role_email = em.get('To').replace('<', '').replace('>', '')
+        except AttributeError:
+            # The To field is None, something is wrong with the content
+            return RETURN_CODES['EX_DATAERR']
+        recipient = role_email.split('@')[0]
+        if recipient in IGNORE_LIST:
+            log.info('roleexpander called with ignored recipient %s, ignoring',
+                     recipient)
+            return RETURN_CODES['EX_NOUSER']
         # Open connection with the ldap
         try:
             agent = LdapAgent(**ldap_config)
