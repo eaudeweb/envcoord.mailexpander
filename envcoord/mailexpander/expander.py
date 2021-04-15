@@ -59,6 +59,8 @@ RETURN_CODES = {
     'EX_CONFIG':       78,  # configuration error
 }
 
+IGNORE_LIST = ['zope@envcoord.health.fgov.be', 'root@envcoord.health.fgov.be']
+
 DUMMY_MAIL = """MIME-Version: 1.0
 Content-Type: text/plain; charset="utf-8"
 Content-Transfer-Encoding: quoted-printable
@@ -580,6 +582,8 @@ def main():
         opts = dict(opts)
         from_email = opts['-f']
         role_email = opts['-r']
+        if role_email in IGNORE_LIST:
+            return RETURN_CODES['EX_NOUSER']
         if '-c' in opts:
             config = ConfigParser()
             config.read([opts['-c']])
