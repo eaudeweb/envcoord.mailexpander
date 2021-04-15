@@ -12,6 +12,7 @@ import getopt
 import ldap
 import logging
 import os
+import re
 import smtplib
 import string
 import sys
@@ -293,8 +294,10 @@ class Expander(object):
         # this allows "inheriting" permissions from above roles
         # see http://taskman.eionet.europa.eu/issues/20422
 
-        if 'permittedPerson' not in role_data:
-            role_data['permittedPerson'] = []
+        if 'permittedperson' not in role_data:
+            role_data['permittedperson'] = []
+        if 'permittedSender' not in role_data:
+            role_data['permittedSender'] = []
 
         role_dn = self.agent._role_dn(role_id)
         parent_roles = self.agent._ancestor_roles_dn(role_dn)[1:]
@@ -578,6 +581,7 @@ def main():
     try:
         opts = dict(opts)
         from_email = opts['-f']
+        to_email = opts['-r']
         if '-c' in opts:
             config = ConfigParser()
             config.read([opts['-c']])
@@ -627,12 +631,23 @@ def main():
                     break
                 content += buffer
         em = email.message_from_string(content)
+        pattern = 'for\ \<(.*?)\>'
         try:
-            role_email = em.get('To').replace('<', '').replace('>', '')
-        except AttributeError:
-            # The To field is None, something is wrong with the content
+            role_email = re.search(pattern, em.get('Received')).groups()[0]
+        except TypeError:
+            log.error('There is no "Received" in the content body')
+            log.error('Passed to_email: %s', to_email)
+            #log.error(content)
             return RETURN_CODES['EX_DATAERR']
-        recipient = role_email.split('@')[0]
+        except AttributeError:
+            recipient = em.get('To').split('@')[0]
+            if not recipient in IGNORE_LIST:
+                log.error('Expected string not found in Recipient field')
+                log.error('Passed to_email: %s', to_email)
+                #log.error(content) 
+                return RETURN_CODES['EX_DATAERR']
+        else:
+            recipient = role_email.split('@')[0]
         if recipient in IGNORE_LIST:
             log.info('roleexpander called with ignored recipient %s, ignoring',
                      recipient)
