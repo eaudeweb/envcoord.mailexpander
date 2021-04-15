@@ -59,8 +59,6 @@ RETURN_CODES = {
     'EX_CONFIG':       78,  # configuration error
 }
 
-IGNORE_LIST = ['zope', 'environment', 'grassharper']
-
 DUMMY_MAIL = """MIME-Version: 1.0
 Content-Type: text/plain; charset="utf-8"
 Content-Transfer-Encoding: quoted-printable
@@ -581,7 +579,7 @@ def main():
     try:
         opts = dict(opts)
         from_email = opts['-f']
-        to_email = opts['-r']
+        role_email = opts['-r']
         if '-c' in opts:
             config = ConfigParser()
             config.read([opts['-c']])
@@ -630,28 +628,7 @@ def main():
                 if not buffer:
                     break
                 content += buffer
-        em = email.message_from_string(content)
-        pattern = 'for\ \<(.*?)\>'
-        try:
-            role_email = re.search(pattern, em.get('Received')).groups()[0]
-        except TypeError:
-            log.error('There is no "Received" in the content body')
-            log.error('Passed to_email: %s', to_email)
-            #log.error(content)
-            return RETURN_CODES['EX_DATAERR']
-        except AttributeError:
-            recipient = em.get('To').split('@')[0]
-            if not recipient in IGNORE_LIST:
-                log.error('Expected string not found in Recipient field')
-                log.error('Passed to_email: %s', to_email)
-                #log.error(content) 
-                return RETURN_CODES['EX_DATAERR']
-        else:
-            recipient = role_email.split('@')[0]
-        if recipient in IGNORE_LIST:
-            log.info('roleexpander called with ignored recipient %s, ignoring',
-                     recipient)
-            return RETURN_CODES['EX_NOUSER']
+
         # Open connection with the ldap
         try:
             agent = LdapAgent(**ldap_config)
