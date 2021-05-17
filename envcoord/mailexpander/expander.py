@@ -114,6 +114,8 @@ class Expander(object):
         self.roles_to_filter = []
         roles_to_filter = config.get(
             'roles_to_filter', '')
+        self.skip_confirmation_email = config.get('skip_confirmation_email',
+                                                  None)
         if roles_to_filter:
             self.roles_to_filter = roles_to_filter.strip().split(',')
 
@@ -276,14 +278,15 @@ class Expander(object):
                     log.error("Error %s while sending to %s",
                               retval, self.no_owner_send_to)
                     return retval
-            try:
-                retval = self.send_confirmation_email(
-                    subject, from_email, role)
-            except Exception:
-                log.exception("Error sending confirmation")
-            else:
-                if retval != RETURN_CODES['EX_OK']:
-                    log.error("Error sending confirmation: %d", retval)
+            if not self.skip_confirmation_email:
+                try:
+                    retval = self.send_confirmation_email(
+                        subject, from_email, role)
+                except Exception:
+                    log.exception("Error sending confirmation")
+                else:
+                    if retval != RETURN_CODES['EX_OK']:
+                        log.error("Error sending confirmation: %d", retval)
 
         return RETURN_CODES['EX_OK']
 
