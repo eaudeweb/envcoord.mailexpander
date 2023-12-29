@@ -17,6 +17,7 @@ import smtplib
 import string
 import sys
 import time
+from lxml import html
 
 __version__ = """$Id: expander.py 40888 2017-04-05 09:47:09Z tiberich $"""
 
@@ -213,21 +214,65 @@ class Expander(object):
             except KeyError:
                 em.add_header('subject', subject)
 
+        sender = role_email
+        # Add original sender to CC, since the email will be sent from
+        # role@envcoord. The recipients will have the option to reply all to
+        # send the email to the original recipient
+        # (aside from manually editing the recipients).
+        original_cc = em.get('cc')
+        if not original_cc:
+            new_cc = '<%s>' % from_email
+        else:
+            new_cc = '%s,\r\n        <%s>' % (original_cc, from_email)
+        try:
+            em.replace_header('cc', new_cc)
+        except KeyError:
+            em.add_header('cc', new_cc)
         # Add Sender: header
-        sender = 'owner-' + role_email
+        del em['Return-Path']  # Exception won't be raised
+        em['Return-Path'] = sender
         del em['Sender']  # Exception won't be raised
         em['Sender'] = sender
+        del em['X-Auth-ID']  # Exception won't be raised
+        em['X-Auth-ID'] = sender
+        del em['From']  # Exception won't be raised
+        em['From'] = sender
         # List-Post etc. is described in RFC 2369
         del em['List-Help']
         del em['List-Subscribe']
         del em['List-Unsubscribe']
         del em['List-Owner']
         # List-ID is described in RFC 2919
-        del em['List-ID']
-        em['List-ID'] = '<%s>' % role_email.replace('@', '.')
-        del em['List-Post']
+        #del em['List-ID']
+        #em['List-ID'] = '<%s>' % role_email.replace('@', '.')
+        #del em['List-Post']
         # Used by Thunderbird and KMail
-        em['List-Post'] = '<mailto:%s>' % role_email
+        #em['List-Post'] = '<mailto:%s>' % role_email
+
+        # Add "Sent on behalf of" to the email body
+        new_payload = []
+        for root_payload in em.get_payload():
+            if 'multipart' in root_payload.get('content-type'):
+                for payload in root_payload.get_payload():
+                    if 'html' in payload.get('content-type'):
+                        emailhtml = payload.get_payload()
+                        prefix_el = html.fromstring(
+                            "<strong>Sent on behalf of %s</strong><br><br>" %
+                            from_email
+                        )
+                        email_html_el = html.fromstring(emailhtml)
+                        email_html_el.body.insert(0, prefix_el)
+                        payload.set_payload(html.tostring(email_html_el))
+                        new_payload.append(payload)
+                    else:
+                        text = payload.get_payload()
+                        prefix = "Sent on behalf of %s" % from_email
+                        payload.set_payload("%s\r\n\r\n%s" % (prefix, text))
+                        new_payload.append(payload)
+            else:
+                # Attachments. We don't do anything to them.
+                new_payload.append(root_payload)
+        em.set_payload(new_payload)
 
         content = em.as_string()
 
@@ -268,12 +313,12 @@ class Expander(object):
             # If there are any addresses to always send to
             if self.also_send_to != ['']:
                 retval = self.send_emails(
-                    'owner-' + role_email, self.also_send_to, content)
+                    role_email, self.also_send_to, content)
 
             # Send e-mails
             for emails in email_batches:
                 retval = self.send_emails(
-                    'owner-' + role_email, emails, content)
+                    role_email, emails, content)
                 if retval != RETURN_CODES['EX_OK']:
                     log.error("Error %s while sending to %s",
                               retval, self.no_owner_send_to)

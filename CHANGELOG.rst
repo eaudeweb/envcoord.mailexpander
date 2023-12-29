@@ -1,3 +1,8 @@
+1.00 (unreleased)
+======================
+* from_email is now equal to the recipiend role email instead of the original
+  sender, to avoid the emails being identified as spam [valipod]
+
 0.16 (unreleased)
 ======================
 * allow filtering of role members for specified top roles [dumitval]
