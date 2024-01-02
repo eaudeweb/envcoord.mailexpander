@@ -1,5 +1,6 @@
 1.00 (unreleased)
 ======================
+* Move "Sent on behalf of" message to the subject [dumitval]
 * from_email is now equal to the recipiend role email instead of the original
   sender, to avoid the emails being identified as spam [valipod]
 

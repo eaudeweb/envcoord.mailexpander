@@ -208,7 +208,8 @@ class Expander(object):
         # Prepend to subject:
         subject = em.get('subject', '(no-subject)')
         if not ("[%s] " % role) in subject:
-            subject = "[%s] %s" % (role, subject)
+            subject = "[%s] [Sent on behalf of %s] %s" % (
+                role, from_email, subject)
             try:
                 em.replace_header('subject', subject)
             except KeyError:
@@ -250,29 +251,29 @@ class Expander(object):
         #em['List-Post'] = '<mailto:%s>' % role_email
 
         # Add "Sent on behalf of" to the email body
-        new_payload = []
-        for root_payload in em.get_payload():
-            if 'multipart' in root_payload.get('content-type'):
-                for payload in root_payload.get_payload():
-                    if 'html' in payload.get('content-type'):
-                        emailhtml = payload.get_payload()
-                        prefix_el = html.fromstring(
-                            "<strong>Sent on behalf of %s</strong><br><br>" %
-                            from_email
-                        )
-                        email_html_el = html.fromstring(emailhtml)
-                        email_html_el.body.insert(0, prefix_el)
-                        payload.set_payload(html.tostring(email_html_el))
-                        new_payload.append(payload)
-                    else:
-                        text = payload.get_payload()
-                        prefix = "Sent on behalf of %s" % from_email
-                        payload.set_payload("%s\r\n\r\n%s" % (prefix, text))
-                        new_payload.append(payload)
-            else:
-                # Attachments. We don't do anything to them.
-                new_payload.append(root_payload)
-        em.set_payload(new_payload)
+        # new_payload = []
+        # for root_payload in em.get_payload():
+        #     if 'multipart' in root_payload.get('content-type'):
+        #         for payload in root_payload.get_payload():
+        #             if 'html' in payload.get('content-type'):
+        #                 emailhtml = payload.get_payload()
+        #                 prefix_el = html.fromstring(
+        #                     "<strong>Sent on behalf of %s</strong><br><br>" %
+        #                     from_email
+        #                 )
+        #                 email_html_el = html.fromstring(emailhtml)
+        #                 email_html_el.body.insert(0, prefix_el)
+        #                 payload.set_payload(html.tostring(email_html_el))
+        #                 new_payload.append(payload)
+        #             else:
+        #                 text = payload.get_payload()
+        #                 prefix = "Sent on behalf of %s" % from_email
+        #                 payload.set_payload("%s\r\n\r\n%s" % (prefix, text))
+        #                 new_payload.append(payload)
+        #     else:
+        #         # Attachments. We don't do anything to them.
+        #         new_payload.append(root_payload)
+        # em.set_payload(new_payload)
 
         content = em.as_string()
 
