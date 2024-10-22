@@ -1,5 +1,9 @@
 1.00 (unreleased)
 ======================
+* Bugfix: correct original to in the subject when CC is present
+  [dumitval]
+* Change subject info to 'Subject [original sender] [original to role]'
+  [dumitval]
 * Move "Sent on behalf of" message to the subject [dumitval]
 * from_email is now equal to the recipiend role email instead of the original
   sender, to avoid the emails being identified as spam [valipod]
