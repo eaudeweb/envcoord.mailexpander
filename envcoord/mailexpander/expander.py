@@ -197,6 +197,17 @@ class Expander(object):
                         return RETURN_CODES['EX_CONFIG']
             return RETURN_CODES['EX_OK']
 
+        # Check if role is deactivated
+        if self.is_deactivated(role_data):
+            log.info("Role %s is deactivated, rejecting email from %s",
+                     role, from_email)
+            if not debug_mode:
+                try:
+                    self.send_deactivated_email(from_email, role, role_email)
+                except Exception:
+                    log.exception("Error sending deactivation notice")
+            return RETURN_CODES['EX_NOPERM']
+
         # Check if from_email can expand
         if self.can_expand(from_email, role, role_data) is False:
             log.info("%s cannot send to %s@envcoord", from_email, role)
@@ -448,6 +459,44 @@ class Expander(object):
                     continue
 
         return False
+
+    def is_deactivated(self, role_data):
+        """ Check if a role is deactivated based on the LDAP 'l' attribute.
+        The attribute stores values like 'deactivated:True' or
+        'deactivated:False'.
+        """
+        raw = role_data.get('l', ['deactivated:False'])[0]
+        if isinstance(raw, bytes):
+            raw = raw.decode('utf-8')
+        return raw.lower().split('deactivated:')[-1] == 'true'
+
+    def send_deactivated_email(self, to_email, role, role_email):
+        """ Send a notification to the sender that the role is deactivated
+        and no email will be delivered.
+        """
+        log.info("Sending deactivation notice to %s for role %s",
+                 to_email, role)
+        content = ""
+        template_path = os.path.join(os.path.dirname(__file__),
+                                     'templates',
+                                     'deactivated_role_email.html')
+        if os.path.isfile(template_path):
+            f = open(template_path, 'rb')
+            content = f.read()
+            f.close()
+
+        content = content.replace('{{role_id}}', role)
+        content = content.replace('{{role_email}}', role_email)
+
+        html_part = MIMEText(content, 'html')
+        message = MIMEMultipart('alternative')
+        message['Subject'] = ("Email not delivered: role %s is deactivated"
+                              % role)
+        message['From'] = self.noreply
+        message['To'] = to_email
+        message.attach(html_part)
+
+        return self.send_emails(self.noreply, [to_email], message.as_string())
 
     def send_confirmation_email(self, subject, to_email, role):
         """ If sending emails succeeded send a confirmation email to sender and

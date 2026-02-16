@@ -1,5 +1,6 @@
 1.00 (unreleased)
 ======================
+* Feature: reject emails sent to deactivated roles [dumitval]
 * Bugfix: correct original to in the subject when CC is present
   [dumitval]
 * Change subject info to 'Subject [original sender] [original to role]'
