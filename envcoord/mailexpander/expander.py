@@ -140,6 +140,12 @@ class Expander(object):
         role = role_email.split('@')[0]
         log.info("New mail from %s to %s", from_email, role_email)
 
+        # Check if this is a bounce message (sent to role+bounce@domain)
+        if '+bounce' in role:
+            role = role.replace('+bounce', '')
+            log.info("Bounce message detected for role %s", role)
+            return self.handle_bounce(role, content, debug_mode)
+
         """ If an e-mail is sent to a role starting with owner- then get
         the `owner` attributes of that `role` and send them the message.
         This is useful when unintended e-mail is sent such as vacation
@@ -231,8 +237,11 @@ class Expander(object):
         except KeyError:
             em.add_header('cc', new_cc)
         # Add Sender: header
+        # Set Return-Path to role+bounce for bounce handling
+        role_local, role_domain = role_email.split('@')
+        bounce_address = '%s+bounce@%s' % (role_local, role_domain)
         del em['Return-Path']  # Exception won't be raised
-        em['Return-Path'] = sender
+        em['Return-Path'] = bounce_address
         del em['Sender']  # Exception won't be raised
         em['Sender'] = sender
         del em['X-Auth-ID']  # Exception won't be raised
@@ -309,6 +318,66 @@ class Expander(object):
                 else:
                     if retval != RETURN_CODES['EX_OK']:
                         log.error("Error sending confirmation: %d", retval)
+
+        return RETURN_CODES['EX_OK']
+
+    def handle_bounce(self, role, content, debug_mode=False):
+        """ Handle bounce messages by forwarding them to role owners.
+
+        When an email sent to role members bounces, the mail server sends
+        a bounce notification to role+bounce@domain. This method forwards
+        the bounce message to the role owners.
+
+        Arguments::
+            role -- The role name (without +bounce suffix)
+            content -- The bounce message content
+            debug_mode -- If True, don't actually send emails
+        """
+        log.info("Processing bounce for role %s", role)
+
+        # Get role data from LDAP to find owners
+        try:
+            role_data = self.agent.get_role(role)
+        except ldap.SERVER_DOWN:
+            log.error("LDAP server is down")
+            return RETURN_CODES['EX_TEMPFAIL']
+        except (ldap.NO_SUCH_OBJECT, ValueError):
+            log.info("%r role not found in ldap", role)
+            return RETURN_CODES['EX_NOUSER']
+        except Exception as e:
+            log.error("%r role not found exception, %r" % (role, e))
+            return RETURN_CODES['EX_NOUSER']
+
+        # Get owners - same logic as owner- prefix (lines 175-198)
+        owners = role_data.get('owners_data', {})
+
+        if not owners:
+            log.warning("Role %s has no owners, cannot forward bounce", role)
+            if self.no_owner_send_to:
+                log.info("Sending bounce to fallback address %s",
+                        self.no_owner_send_to)
+                if not debug_mode:
+                    retval = self.send_emails(
+                        self.noreply, [self.no_owner_send_to], content)
+                    if retval != RETURN_CODES['EX_OK']:
+                        log.error("Error %s while sending bounce to %s",
+                                 retval, self.no_owner_send_to)
+                        return retval
+            return RETURN_CODES['EX_OK']
+
+        # Forward bounce to each owner
+        if not debug_mode:
+            # owner_dn is not needed, thus _ is used as a placeholder to avoid unused variable warning
+            for _, owner_data in owners.items():
+                retval = self.send_emails(self.noreply, owner_data['mail'],
+                                         content)
+                if retval != RETURN_CODES['EX_OK']:
+                    log.error("Error %s while sending bounce to %s",
+                             retval, owner_data['mail'])
+                    return retval
+        else:
+            log.debug("Debug mode: would forward bounce to %d owners",
+                     len(owners))
 
         return RETURN_CODES['EX_OK']
 
