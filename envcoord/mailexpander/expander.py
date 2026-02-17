@@ -12,12 +12,10 @@ import getopt
 import ldap
 import logging
 import os
-import re
 import smtplib
 import string
 import sys
 import time
-from lxml import html
 
 __version__ = """$Id: expander.py 40888 2017-04-05 09:47:09Z tiberich $"""
 
@@ -302,6 +300,10 @@ class Expander(object):
             if self.also_send_to != ['']:
                 retval = self.send_emails(
                     role_email, self.also_send_to, content)
+                if retval != RETURN_CODES['EX_OK']:
+                    log.error("Error %s while sending to %s",
+                              retval, self.also_send_to)
+                    return retval
 
             # Send e-mails
             for emails in email_batches:
@@ -309,7 +311,7 @@ class Expander(object):
                     role_email, emails, content)
                 if retval != RETURN_CODES['EX_OK']:
                     log.error("Error %s while sending to %s",
-                              retval, self.no_owner_send_to)
+                              retval, emails)
                     return retval
             if not self.skip_confirmation_email:
                 try:
@@ -330,8 +332,8 @@ class Expander(object):
         # this allows "inheriting" permissions from above roles
         # see http://taskman.eionet.europa.eu/issues/20422
 
-        if 'permittedperson' not in role_data:
-            role_data['permittedperson'] = []
+        if 'permittedPerson' not in role_data:
+            role_data['permittedPerson'] = []
         if 'permittedSender' not in role_data:
             role_data['permittedSender'] = []
 
@@ -370,13 +372,13 @@ class Expander(object):
 
             for person_dn in role_info.get('permittedPerson', []):
                 try:
-                    email = self.agent._query(person_dn)['mail'][0]
+                    sender_email = self.agent._query(person_dn)['mail'][0]
                 except Exception as e:
                     # Log that we couldn't get the email.
                     log.exception("Invalid DN: %s; %s" % (person_dn, e))
                     continue
                 else:
-                    senders.add(email)
+                    senders.add(sender_email)
 
         role_data['permittedSender'] = filter(None, set(senders))
 
