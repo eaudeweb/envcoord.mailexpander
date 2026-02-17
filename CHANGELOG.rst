@@ -1,5 +1,6 @@
 1.00 (unreleased)
 ======================
+* Bugfix: syntax fix in log.exception [dumitval]
 * Feature: send a copy of the bounced email to the role owner [dumitval]
 * Bugfix: correct original to in the subject when CC is present
   [dumitval]
