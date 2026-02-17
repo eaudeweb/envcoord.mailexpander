@@ -373,7 +373,7 @@ class Expander(object):
                     email = self.agent._query(person_dn)['mail'][0]
                 except Exception as e:
                     # Log that we couldn't get the email.
-                    log.exception("Invalid DN: %s; %s" (person_dn, e))
+                    log.exception("Invalid DN: %s; %s" % (person_dn, e))
                     continue
                 else:
                     senders.add(email)
@@ -433,7 +433,7 @@ class Expander(object):
                             except Exception as e:
                                 # Log that we couldn't get the email.
                                 log.exception(
-                                    "Invalid `owner` DN: %s; %s" (owner_dn, e))
+                                    "Invalid `owner` DN: %s; %s" % (owner_dn, e))
                                 continue
                             if from_email in map(str.lower, owner['mail']):
                                 return True

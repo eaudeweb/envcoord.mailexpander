@@ -1,5 +1,6 @@
 1.00 (unreleased)
 ======================
+* Bugfix: syntax fix in log.exception [dumitval]
 * Feature: reject emails sent to deactivated roles [dumitval]
 * Bugfix: correct original to in the subject when CC is present
   [dumitval]
