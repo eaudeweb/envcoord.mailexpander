@@ -75,7 +75,6 @@ X-Actually-To: test-administration@envcoord.health.fgov.be
 
 The item "Test" has been edited."""
 
-sys.tracebacklimit = 0
 log = logging.getLogger('rolesexpander')
 log.setLevel(logging.DEBUG)
 stream_handler = logging.StreamHandler()
