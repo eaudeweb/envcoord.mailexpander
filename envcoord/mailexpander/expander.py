@@ -1,9 +1,12 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-from ConfigParser import ConfigParser
+from configparser import ConfigParser
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 from fnmatch import fnmatch
-from ldap_agent import LdapAgent
+from functools import wraps
+from envcoord.mailexpander.ldap_agent import LdapAgent
 from logging.handlers import SysLogHandler
 from subprocess import Popen, PIPE
 import email
@@ -14,31 +17,8 @@ import logging
 import os
 import re
 import smtplib
-import string
 import sys
 import time
-from lxml import html
-
-__version__ = """$Id: expander.py 40888 2017-04-05 09:47:09Z tiberich $"""
-
-
-try:
-    from email.mime.text import MIMEText
-    from email.mime.multipart import MIMEMultipart
-except ImportError:      # pragma: no cover
-    from email.MIMEText import MIMEText
-    from email.MIMEMultipart import MIMEMultipart
-
-try:
-    from functools import wraps
-except ImportError:
-    def wraps(func):
-        def decorator(wrapper):
-            for name in ('__module__', '__name__', '__doc__'):
-                setattr(wrapper, name, getattr(func, name))
-                wrapper.__dict__.update(func.__dict__)
-            return wrapper
-        return decorator
 
 
 RETURN_CODES = {
@@ -107,7 +87,7 @@ class Expander(object):
         self.sendmail_path = config.get('sendmail_path', '/usr/sbin/sendmail')
         self.archivefile = config.get('mailbox', None)
         also_string = config.get('also_send_to', '')
-        self.also_send_to = map(string.strip, also_string.split(','))
+        self.also_send_to = [s.strip() for s in also_string.split(',')]
         self.noreply = config.get('no_reply',
                                   'no-reply@envcoord.health.fgov.be')
         self.no_owner_send_to = config.get('no_owner_send_to', '').strip()
@@ -258,7 +238,7 @@ class Expander(object):
         batch = 0
         batch_size = 50  # Send in email batches
 
-        for dn, data in role_data['members_data'].iteritems():
+        for dn, data in role_data['members_data'].items():
             # if there is a filter and the mail was not sent directly to
             # a role matching the filter, remove all users from subroles
             # mathching that filter
@@ -280,8 +260,8 @@ class Expander(object):
             if len(email_batches[batch]) >= batch_size:
                 batch += 1
                 email_batches.append([])  # Init new batch
-            clean_addresses = filter(lambda i: i.find(
-                '@') > 0, data.get('mail', ['']))
+            clean_addresses = [i for i in data.get('mail', [''])
+                               if i.find('@') > 0]
             email_batches[batch].extend(clean_addresses)
 
         if not debug_mode:
@@ -362,12 +342,12 @@ class Expander(object):
                     email = self.agent._query(person_dn)['mail'][0]
                 except Exception as e:
                     # Log that we couldn't get the email.
-                    log.exception("Invalid DN: %s; %s" (person_dn, e))
+                    log.exception("Invalid DN: %s; %s" % (person_dn, e))
                     continue
                 else:
                     senders.add(email)
 
-        role_data['permittedSender'] = filter(None, set(senders))
+        role_data['permittedSender'] = list(filter(None, set(senders)))
 
         return role_data
 
@@ -422,16 +402,16 @@ class Expander(object):
                             except Exception as e:
                                 # Log that we couldn't get the email.
                                 log.exception(
-                                    "Invalid `owner` DN: %s; %s" (owner_dn, e))
+                                    "Invalid `owner` DN: %s; %s" % (owner_dn, e))
                                 continue
-                            if from_email in map(str.lower, owner['mail']):
+                            if from_email in [x.lower() for x in owner['mail']]:
                                 return True
                 elif sender_pattern == 'members':
                     if 'members_data' in role_data:
                         for user_dn, user_attrs in \
-                                role_data['members_data'].iteritems():
+                                role_data['members_data'].items():
                             if from_email in \
-                                    map(str.lower, user_attrs['mail']):
+                                    [x.lower() for x in user_attrs['mail']]:
                                 return True
                 elif fnmatch(from_email, sender_pattern):
                     return True
@@ -440,7 +420,7 @@ class Expander(object):
             for permitted_dn in role_data['permittedPerson']:
                 try:
                     persons_emails = self.agent._query(permitted_dn)['mail']
-                    if from_email in map(str.lower, persons_emails):
+                    if from_email in [x.lower() for x in persons_emails]:
                         return True
                 except Exception as e:
                     # Log that we couldn't get the email.
@@ -460,9 +440,8 @@ class Expander(object):
                                                    'templates',
                                                    'confirmation_email.html')
         if os.path.isfile(confirmation_email_template):
-            f = open(confirmation_email_template, 'rb')
-            content = f.read()
-            f.close()
+            with open(confirmation_email_template, 'r', encoding='utf-8') as f:
+                content = f.read()
 
         content = content.replace('{{role_id}}', role)
 
@@ -509,13 +488,13 @@ class Expander(object):
             # 3.4 Try: /usr/sbin/sendmail 'test @envcoord.health.fgov.be' and
             # it will complain about the address. We therefore clean them with
             # smtplib.quoteaddr
-            quotedemails = map(smtplib.quoteaddr, emails)
+            quotedemails = [smtplib.quoteaddr(e) for e in emails]
             ps = Popen([self.sendmail_path,
                         '-f',
                         smtplib.quoteaddr(from_email),
                         '--'] + quotedemails,
                        stdin=PIPE)
-            ps.stdin.write(content)
+            ps.stdin.write(content.encode('utf-8') if isinstance(content, str) else content)
             ps.stdin.flush()
             ps.stdin.close()
             return_code = ps.wait()
@@ -562,7 +541,7 @@ class Expander(object):
         """
         if self.archivefile is None:
             return  # No mailbox to write to
-        mboxfd = open(self.archivefile, 'ab')
+        mboxfd = open(self.archivefile, 'a', encoding='utf-8')
         try:
             # Get an exclusive lock - don't block
             fcntl.lockf(mboxfd, fcntl.LOCK_EX | fcntl.LOCK_NB)
@@ -584,7 +563,7 @@ class Expander(object):
 
 def usage():
     print("%s [-t] -r [to-email] -f [from-email] -c [config-file] "
-          "-l [ldap-host] -o [logfile]") % sys.argv[0]
+          "-l [ldap-host] -o [logfile]" % sys.argv[0])
     # You can't log when you have just removed the log handler
     # log.error("Invalid arguments %r" % sys.argv)
     sys.exit(RETURN_CODES['EX_USAGE'])

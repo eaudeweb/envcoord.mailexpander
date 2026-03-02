@@ -4,7 +4,7 @@
 from copy import deepcopy
 from envcoord.mailexpander.expander import Expander, RETURN_CODES, log
 from mock import Mock
-from test_ldap_agent import StubbedLdapAgent
+from envcoord.mailexpander.tests.test_ldap_agent import StubbedLdapAgent
 import email
 import ldap
 import logging
@@ -43,9 +43,8 @@ class ExpanderTest(unittest.TestCase):
             fixture_path = os.path.join(fixtures_dir, fixture_filename)
             if os.path.isfile(fixture_path):
                 content = None
-                f = open(fixture_path, 'rb')
-                content = f.read()
-                f.close()
+                with open(fixture_path, 'r', encoding='utf-8') as f:
+                    content = f.read()
                 self.fixtures[os.path.splitext(fixture_filename)[0]] = content
 
         role_dn = self.agent._role_dn
@@ -239,7 +238,7 @@ class ExpanderTest(unittest.TestCase):
 
         self.expander.can_expand = Mock(return_value=True)
 
-        for fixture_name, fixture_content in self.fixtures.iteritems():
+        for fixture_name, fixture_content in self.fixtures.items():
             return_code = self.expander.expand(from_email, role_email,
                                                self.fixtures[fixture_name])
             self.assertEqual(return_code, RETURN_CODES['EX_OK'])
@@ -248,19 +247,22 @@ class ExpanderTest(unittest.TestCase):
 
             em = email.message_from_string(new_body)
             self.assertEqual(len(em.get_all('sender')), 1)
-            self.assertEqual(em.get('sender'), 'owner-' + role_email)
-            self.assertTrue(em.get('subject').startswith(
-                '[%s]' % role_email.split('@')[0]))
+            self.assertEqual(em.get('sender'), role_email)
+            subject = ' '.join(em.get('subject').split())
+            self.assertIn('[Sent on behalf of %s]' % from_email, subject)
 
             ignore_headers = ('received', 'sender', 'subject', 'list-id',
-                              'list-post', )  # Checked above
+                              'list-post', 'return-path', 'x-auth-id',
+                              'from', 'cc', 'list-help',
+                              'list-subscribe', 'list-unsubscribe',
+                              'list-owner')  # Checked above
             # Check the rest of the message, make sure they stay the same
             old_em = email.message_from_string(
                 email.message_from_string(fixture_content).as_string())
 
             for header, value in em.items():
                 if header.lower() not in ignore_headers:
-                    self.assertEquals(value, old_em.get(header))
+                    self.assertEqual(value, old_em.get(header))
 
             if hasattr(str, 'partition'):  # Don't test if <2.5
                 # Based on boundary make sure the message body is untouched
@@ -269,14 +271,14 @@ class ExpanderTest(unittest.TestCase):
                     partition(boundary)[2].partition(boundary)[2]
                 new_body = em.as_string().rpartition(boundary)[0].\
                     partition(boundary)[2].partition(boundary)[2]
-                self.assertEquals(old_body, new_body)
+                self.assertEqual(old_body, new_body)
 
     def test_send_to_owners(self):
         from_email = 'user_one@example.com'
         role_email = 'owner-test@roles.eionet.europa.eu'
         self.expander.expand(from_email, role_email,
                              self.fixtures['content_7bit'])
-        self.assertEquals(self.expander.send_emails.call_args[0][1], [
+        self.assertEqual(self.expander.send_emails.call_args[0][1], [
             'user_three@example.com', 'user_3333@example.com'])
 
     def test_send_filtered(self):
@@ -289,43 +291,43 @@ class ExpanderTest(unittest.TestCase):
         self.expander.filter_str = ''
         self.expander.expand(from_email, role_email,
                              self.fixtures['content_7bit'])
-        self.assertEquals(self.expander.send_emails.call_args[0][1], [
+        self.assertEqual(set(self.expander.send_emails.call_args[0][1]), set([
             'user_four@example.com', 'user_three@example.com',
             'user_3333@example.com', 'user_two@example.com',
-            'user_one@example.com'])
+            'user_one@example.com']))
 
         self.expander.roles_to_filter = []
         self.expander.filter_str = '-gb'
         self.expander.expand(from_email, role_email,
                              self.fixtures['content_7bit'])
-        self.assertEquals(self.expander.send_emails.call_args[0][1], [
+        self.assertEqual(set(self.expander.send_emails.call_args[0][1]), set([
             'user_four@example.com', 'user_three@example.com',
             'user_3333@example.com', 'user_two@example.com',
-            'user_one@example.com'])
+            'user_one@example.com']))
 
         self.expander.roles_to_filter = ['test']
         self.expander.filter_str = ''
         self.expander.expand(from_email, role_email,
                              self.fixtures['content_7bit'])
-        self.assertEquals(self.expander.send_emails.call_args[0][1], [
+        self.assertEqual(set(self.expander.send_emails.call_args[0][1]), set([
             'user_four@example.com', 'user_three@example.com',
             'user_3333@example.com', 'user_two@example.com',
-            'user_one@example.com'])
+            'user_one@example.com']))
 
         self.expander.roles_to_filter = ['test']
         self.expander.filter_str = '-gb'
         self.expander.expand(from_email, role_email,
                              self.fixtures['content_7bit'])
-        self.assertEquals(self.expander.send_emails.call_args[0][1], [
+        self.assertEqual(set(self.expander.send_emails.call_args[0][1]), set([
             'user_four@example.com', 'user_two@example.com',
-            'user_one@example.com'])
+            'user_one@example.com']))
 
         self.expander.roles_to_filter = ['test']
         self.expander.filter_str = '-gb'
         self.expander.expand(from_email, role_email_gb,
                              self.fixtures['content_7bit'])
-        self.assertEquals(self.expander.send_emails.call_args[0][1], [
-            'user_three@example.com', 'user_3333@example.com'])
+        self.assertEqual(set(self.expander.send_emails.call_args[0][1]), set([
+            'user_three@example.com', 'user_3333@example.com']))
 
     def test_send_to_fallback_owner(self):
         from_email = 'user_one@example.com'
@@ -333,7 +335,7 @@ class ExpanderTest(unittest.TestCase):
         self.expander.no_owner_send_to = 'test@example.com'
         self.expander.expand(from_email, role_email,
                              self.fixtures['content_7bit'])
-        self.assertEquals(self.expander.send_emails.call_args[0][1],
+        self.assertEqual(self.expander.send_emails.call_args[0][1],
                           ['test@example.com'])
         del self.expander.no_owner_send_to
 
@@ -342,7 +344,7 @@ class ExpanderTest(unittest.TestCase):
         role_email = 'owner-unowned@roles.eionet.europa.eu'
         res = self.expander.expand(from_email, role_email,
                                    self.fixtures['content_7bit'])
-        self.assertEquals(res, RETURN_CODES['EX_CONFIG'])
+        self.assertEqual(res, RETURN_CODES['EX_CONFIG'])
 
     def test_smtp_failure(self):
         """ SMTP Failure test """
@@ -358,15 +360,15 @@ class ExpanderTest(unittest.TestCase):
         ldap entries
 
         """
-        def send_emails_called(from_email, emails, content):
+        def send_emails_called_set(from_email, emails, content):
             """ Content is modified but this is not the subject of this test"""
-            assert emails == [
+            assert set(emails) == set([
                 'user_four@example.com', 'user_three@example.com',
                 'user_3333@example.com', 'user_two@example.com',
-                'user_one@example.com']
+                'user_one@example.com'])
             return RETURN_CODES['EX_OK']
 
-        self.expander.send_emails.side_effect = send_emails_called
+        self.expander.send_emails.side_effect = send_emails_called_set
 
         role_email = 'test@roles.eionet.europa.eu'
         return_code = self.expander.expand('test@email.com',

@@ -62,8 +62,7 @@ class LdapAgentTest(unittest.TestCase):
         role_data = self.agent.get_role('A')
         assert role_data['permittedSender'] == ['alexandru.plugaru@eaudeweb.ro',
                                            '*@eaudeweb.ro', 'members']
-        assert role_data['permittedPerson'] == [
-            'uid=userone,ou=Users,o=EIONET,l=Europe']
+        assert role_data['permittedPerson'] == [user_dn('userone')]
 
         assert role_data['members_data'] == {
             user_dn('userone'): {
@@ -110,7 +109,7 @@ class LdapAgentTest(unittest.TestCase):
         #users
         data = self.agent.get_role('A')
         assert len(data['members_data']) == 1
-        assert data['members_data'].keys() == [user_dn('userone')]
+        assert list(data['members_data'].keys()) == [user_dn('userone')]
 
     def test_empty_member(self):
         """ When an uniqueMember is empty """
@@ -142,6 +141,6 @@ class LdapAgentTest(unittest.TestCase):
             return ret
         self.mock_conn.search_s.side_effect = mock_called
         role_data = self.agent.get_role('A')
-        self.assertEquals(len(role_data['members_data']), 1)
-        self.assertEquals([user_dn('userone')],
-                    role_data['members_data'].keys())
+        self.assertEqual(len(role_data['members_data']), 1)
+        self.assertEqual([user_dn('userone')],
+                    list(role_data['members_data'].keys()))

@@ -12,7 +12,10 @@ setup(
     long_description="""This program acts as a sendmail mailer and allows
     sending mails to a certain ldap group (role).""",
     # Get strings from http://pypi.python.org/pypi?%3Aaction=list_classifiers
-    classifiers=[],
+    python_requires='>=3.6',
+    classifiers=[
+        'Programming Language :: Python :: 3',
+    ],
     keywords='python ldap sendmail',
     author='Eau de Web',
     author_email='office@eaudeweb.ro',
@@ -26,7 +29,7 @@ setup(
             'roleexpander = envcoord.mailexpander.expander:main',
         ]
     },
-    install_requires=[],
+    install_requires=['python-ldap', 'lxml'],
     tests_require=tests_require,
     extras_require={
         'testing': tests_require,
