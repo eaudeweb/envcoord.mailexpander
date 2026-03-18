@@ -4,6 +4,7 @@
 * Bugfix: syntax fix in log.exception, typo fixes, shadowed email import [dumitval]
 * Feature: reject emails sent to deactivated roles [dumitval]
 * Feature: send a copy of the bounced email to the role owner [dumitval]
+* Feature: send a copy of the bounced email to an ini configured email address [dumitval]
 * Bugfix: correct original to in the subject when CC is present
   [dumitval]
 * Change subject info to 'Subject [original sender] [original to role]'

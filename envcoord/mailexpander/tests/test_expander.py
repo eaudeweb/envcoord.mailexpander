@@ -593,13 +593,13 @@ class ExpanderTest(unittest.TestCase):
         em = email.message_from_string(new_body)
         self.assertEqual(em.get('return-path'), 'test+bounce@roles.eionet.europa.eu')
 
-    def test_bounce_forwarding_to_owners(self):
-        """ Test that bounce messages are forwarded to role owners """
-        # Simulate a bounce message sent to test+bounce@roles.eionet.europa.eu
+    def test_bounce_forwarding_to_configured_address(self):
+        """ Test that bounce messages are forwarded to bounce_send_to """
         from_email = 'mailer-daemon@somewhere.com'
         role_email = 'test+bounce@roles.eionet.europa.eu'
         bounce_content = self.fixtures['content_7bit']
 
+        self.expander.bounce_send_to = 'bounces@example.com'
         return_code = self.expander.expand(from_email, role_email,
                                            bounce_content)
         self.assertEqual(return_code, RETURN_CODES['EX_OK'])
@@ -707,29 +707,21 @@ class ExpanderTest(unittest.TestCase):
         # Verify that the deactivation notice was sent to the sender
         self.assertTrue(self.expander.send_emails.called)
         call_args = self.expander.send_emails.call_args[0]
-        # Should be sent from noreply
         self.assertEqual(call_args[0], self.expander.noreply)
-        # Should be sent to owner (user3 has two emails)
-        self.assertEqual(call_args[1], ['user_three@example.com', 'user_3333@example.com'])
-        # Content should be forwarded as-is
+        self.assertEqual(call_args[1], ['bounces@example.com'])
         self.assertEqual(call_args[2], bounce_content)
 
-    def test_bounce_no_owners_fallback(self):
-        """ Test that bounces for roles without owners go to fallback """
+    def test_bounce_no_configured_address(self):
+        """ Test that bounces are dropped when no bounce_send_to is set """
         from_email = 'mailer-daemon@somewhere.com'
-        role_email = 'unowned+bounce@roles.eionet.europa.eu'
+        role_email = 'test+bounce@roles.eionet.europa.eu'
         bounce_content = self.fixtures['content_7bit']
 
-        self.expander.no_owner_send_to = 'admin@example.com'
+        self.expander.bounce_send_to = ''
         return_code = self.expander.expand(from_email, role_email,
                                            bounce_content)
         self.assertEqual(return_code, RETURN_CODES['EX_OK'])
-
-        # Verify it was sent to the fallback address
-        call_args = self.expander.send_emails.call_args[0]
-        self.assertEqual(call_args[0], self.expander.noreply)
-        self.assertEqual(call_args[1], ['admin@example.com'])
-        self.assertEqual(call_args[2], bounce_content)
+        self.assertFalse(self.expander.send_emails.called)
 
 
 if __name__ == '__main__':
