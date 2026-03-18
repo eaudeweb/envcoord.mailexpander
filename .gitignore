@@ -17,3 +17,5 @@ roleexpander.ini
 local/
 email.txt
 email_with_attachment.txt
+venv*/
+__pycache__/

@@ -62,8 +62,7 @@ class LdapAgentTest(unittest.TestCase):
         role_data = self.agent.get_role('A')
         assert role_data['permittedSender'] == ['alexandru.plugaru@eaudeweb.ro',
                                            '*@eaudeweb.ro', 'members']
-        assert role_data['permittedPerson'] == [
-            'uid=userone,ou=Users,o=EIONET,l=Europe']
+        assert role_data['permittedPerson'] == [user_dn('userone')]
 
         assert role_data['members_data'] == {
             user_dn('userone'): {

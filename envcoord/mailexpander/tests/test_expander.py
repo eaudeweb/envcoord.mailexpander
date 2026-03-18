@@ -248,12 +248,14 @@ class ExpanderTest(unittest.TestCase):
 
             em = email.message_from_string(new_body)
             self.assertEqual(len(em.get_all('sender')), 1)
-            self.assertEqual(em.get('sender'), 'owner-' + role_email)
-            self.assertTrue(em.get('subject').startswith(
-                '[%s]' % role_email.split('@')[0]))
+            self.assertEqual(em.get('sender'), role_email)
+            # Subject may contain line breaks from long header folding
+            subject = ' '.join(em.get('subject').split())
+            self.assertIn('[Sent on behalf of %s]' % from_email, subject)
 
             ignore_headers = ('received', 'sender', 'subject', 'list-id',
-                              'list-post', )  # Checked above
+                              'list-post', 'return-path', 'x-auth-id',
+                              'from', 'cc')  # Checked above or modified
             # Check the rest of the message, make sure they stay the same
             old_em = email.message_from_string(
                 email.message_from_string(fixture_content).as_string())
@@ -289,43 +291,51 @@ class ExpanderTest(unittest.TestCase):
         self.expander.filter_str = ''
         self.expander.expand(from_email, role_email,
                              self.fixtures['content_7bit'])
-        self.assertEquals(self.expander.send_emails.call_args[0][1], [
-            'user_four@example.com', 'user_three@example.com',
-            'user_3333@example.com', 'user_two@example.com',
-            'user_one@example.com'])
+        self.assertEquals(set(self.expander.send_emails.call_args[0][1]),
+                          set(['user_four@example.com',
+                               'user_three@example.com',
+                               'user_3333@example.com',
+                               'user_two@example.com',
+                               'user_one@example.com']))
 
         self.expander.roles_to_filter = []
         self.expander.filter_str = '-gb'
         self.expander.expand(from_email, role_email,
                              self.fixtures['content_7bit'])
-        self.assertEquals(self.expander.send_emails.call_args[0][1], [
-            'user_four@example.com', 'user_three@example.com',
-            'user_3333@example.com', 'user_two@example.com',
-            'user_one@example.com'])
+        self.assertEquals(set(self.expander.send_emails.call_args[0][1]),
+                          set(['user_four@example.com',
+                               'user_three@example.com',
+                               'user_3333@example.com',
+                               'user_two@example.com',
+                               'user_one@example.com']))
 
         self.expander.roles_to_filter = ['test']
         self.expander.filter_str = ''
         self.expander.expand(from_email, role_email,
                              self.fixtures['content_7bit'])
-        self.assertEquals(self.expander.send_emails.call_args[0][1], [
-            'user_four@example.com', 'user_three@example.com',
-            'user_3333@example.com', 'user_two@example.com',
-            'user_one@example.com'])
+        self.assertEquals(set(self.expander.send_emails.call_args[0][1]),
+                          set(['user_four@example.com',
+                               'user_three@example.com',
+                               'user_3333@example.com',
+                               'user_two@example.com',
+                               'user_one@example.com']))
 
         self.expander.roles_to_filter = ['test']
         self.expander.filter_str = '-gb'
         self.expander.expand(from_email, role_email,
                              self.fixtures['content_7bit'])
-        self.assertEquals(self.expander.send_emails.call_args[0][1], [
-            'user_four@example.com', 'user_two@example.com',
-            'user_one@example.com'])
+        self.assertEquals(set(self.expander.send_emails.call_args[0][1]),
+                          set(['user_four@example.com',
+                               'user_two@example.com',
+                               'user_one@example.com']))
 
         self.expander.roles_to_filter = ['test']
         self.expander.filter_str = '-gb'
         self.expander.expand(from_email, role_email_gb,
                              self.fixtures['content_7bit'])
-        self.assertEquals(self.expander.send_emails.call_args[0][1], [
-            'user_three@example.com', 'user_3333@example.com'])
+        self.assertEquals(set(self.expander.send_emails.call_args[0][1]),
+                          set(['user_three@example.com',
+                               'user_3333@example.com']))
 
     def test_send_to_fallback_owner(self):
         from_email = 'user_one@example.com'
@@ -360,10 +370,10 @@ class ExpanderTest(unittest.TestCase):
         """
         def send_emails_called(from_email, emails, content):
             """ Content is modified but this is not the subject of this test"""
-            assert emails == [
+            assert set(emails) == set([
                 'user_four@example.com', 'user_three@example.com',
                 'user_3333@example.com', 'user_two@example.com',
-                'user_one@example.com']
+                'user_one@example.com'])
             return RETURN_CODES['EX_OK']
 
         self.expander.send_emails.side_effect = send_emails_called
@@ -576,8 +586,15 @@ class ExpanderTest(unittest.TestCase):
                                            self.fixtures['content_7bit'])
         self.assertEqual(return_code, RETURN_CODES['EX_OK'])
 
+<<<<<<< HEAD
     def test_return_path_with_bounce(self):
         """ Test that Return-Path is set to role+bounce@domain """
+=======
+    def test_send_headers(self):
+        """ Test that From, Return-Path, X-Auth-ID, Sender are all set to
+        role_email, and the original sender is added to CC.
+        """
+>>>>>>> master
         from_email = 'user_one@example.com'
         role_email = 'test@roles.eionet.europa.eu'
 
@@ -586,6 +603,7 @@ class ExpanderTest(unittest.TestCase):
                                            self.fixtures['content_7bit'])
         self.assertEqual(return_code, RETURN_CODES['EX_OK'])
 
+<<<<<<< HEAD
         # Check that Return-Path was set correctly
         new_body = self.expander.send_emails.call_args[0][2]
         em = email.message_from_string(new_body)
@@ -619,6 +637,196 @@ class ExpanderTest(unittest.TestCase):
                                            bounce_content)
         self.assertEqual(return_code, RETURN_CODES['EX_OK'])
         self.assertFalse(self.expander.send_emails.called)
+=======
+        new_body = self.expander.send_emails.call_args[0][2]
+        em = email.message_from_string(new_body)
+
+        self.assertEqual(em.get('Sender'), role_email)
+        self.assertEqual(em.get('From'), role_email)
+        self.assertEqual(em.get('Return-Path'), role_email)
+        self.assertEqual(em.get('X-Auth-ID'), role_email)
+        self.assertIn(from_email, em.get('Cc'))
+
+    def test_send_preserves_existing_cc(self):
+        """ When the original email already has a CC header, the original
+        sender should be appended to it.
+        """
+        from_email = 'user_one@example.com'
+        role_email = 'test@roles.eionet.europa.eu'
+        existing_cc = 'other@example.com'
+
+        self.expander.can_expand = Mock(return_value=True)
+        # Inject a CC header into the fixture content (uses CRLF)
+        content = self.fixtures['content_7bit'].replace(
+            '\r\n\r\n', '\r\nCc: %s\r\n\r\n' % existing_cc, 1)
+        return_code = self.expander.expand(from_email, role_email, content)
+        self.assertEqual(return_code, RETURN_CODES['EX_OK'])
+
+        new_body = self.expander.send_emails.call_args[0][2]
+        em = email.message_from_string(new_body)
+        cc = em.get('Cc')
+        self.assertIn(existing_cc, cc)
+        self.assertIn(from_email, cc)
+
+    def test_skip_confirmation_email(self):
+        """ When skip_confirmation_email is set, no confirmation email should
+        be sent after successful expansion.
+        """
+        from_email = 'user_one@example.com'
+        role_email = 'test@roles.eionet.europa.eu'
+
+        self.expander.can_expand = Mock(return_value=True)
+        self.expander.send_confirmation_email = Mock(
+            return_value=RETURN_CODES['EX_OK'])
+        self.expander.skip_confirmation_email = 'true'
+
+        self.expander.expand(from_email, role_email,
+                             self.fixtures['content_7bit'])
+        self.assertFalse(self.expander.send_confirmation_email.called)
+
+    def test_confirmation_email_sent_by_default(self):
+        """ When skip_confirmation_email is not set, a confirmation email
+        should be sent after successful expansion.
+        """
+        from_email = 'user_one@example.com'
+        role_email = 'test@roles.eionet.europa.eu'
+
+        self.expander.can_expand = Mock(return_value=True)
+        self.expander.send_confirmation_email = Mock(
+            return_value=RETURN_CODES['EX_OK'])
+        self.expander.skip_confirmation_email = None
+
+        self.expander.expand(from_email, role_email,
+                             self.fixtures['content_7bit'])
+        self.assertTrue(self.expander.send_confirmation_email.called)
+
+    def test_also_send_to(self):
+        """ When also_send_to is configured, emails should also be sent
+        to those addresses.
+        """
+        from_email = 'user_one@example.com'
+        role_email = 'test@roles.eionet.europa.eu'
+
+        self.expander.can_expand = Mock(return_value=True)
+        self.expander.also_send_to = ['archive@example.com',
+                                      'monitor@example.com']
+
+        self.expander.expand(from_email, role_email,
+                             self.fixtures['content_7bit'])
+
+        # Find the call that sent to also_send_to
+        also_call = None
+        for call in self.expander.send_emails.call_args_list:
+            if call[0][1] == ['archive@example.com', 'monitor@example.com']:
+                also_call = call
+                break
+        self.assertIsNotNone(also_call,
+                             "also_send_to addresses were not sent to")
+
+    def test_can_expand_email_with_equals(self):
+        """ Test that from_email with = character is handled correctly.
+        Fix for #18085: bounced emails can have encoded addresses like
+        user=original@bounce.domain.com
+        """
+        role_data = {
+            'members_data': {},
+            'permittedSender': ['original@bounce.domain.com'],
+        }
+        self.expander.add_inherited_senders = lambda role_id, role_data: \
+            role_data
+        result = self.expander.can_expand(
+            'user=original@bounce.domain.com', 'test', role_data)
+        self.assertTrue(result)
+
+    def test_deactivated_role_rejected(self):
+        """ Email to a deactivated role should be rejected and the sender
+        should receive a notification.
+        """
+        user_dn = self.agent._user_dn
+
+        self.agent.get_role = Mock(return_value={
+            'description': 'deactivated role',
+            'l': ['deactivated:True'],
+            'members_data': {
+                user_dn('userone'): {
+                    'cn': ['User one'],
+                    'mail': ['user_one@example.com'],
+                },
+            },
+            'uniqueMember': [user_dn('userone')],
+            'permittedSender': ['anyone'],
+        })
+        return_code = self.expander.expand(
+            'test@email.com',
+            'test_deactivated@roles.eionet.europa.eu',
+            self.fixtures['content_7bit'])
+        self.assertEqual(return_code, RETURN_CODES['EX_OK'])
+
+        # Verify that the deactivation notice was sent to the sender
+        self.assertTrue(self.expander.send_emails.called)
+        call_args = self.expander.send_emails.call_args[0]
+        self.assertEqual(call_args[1], ['test@email.com'])
+        notice_content = call_args[2]
+        self.assertIn('deactivated', notice_content)
+
+    def test_deactivated_role_false_allows_sending(self):
+        """ A role with deactivated:False should work normally.
+        """
+        user_dn = self.agent._user_dn
+
+        self.agent.get_role = Mock(return_value={
+            'description': 'active role',
+            'l': ['deactivated:False'],
+            'members_data': {
+                user_dn('userone'): {
+                    'cn': ['User one'],
+                    'mail': ['user_one@example.com'],
+                },
+            },
+            'uniqueMember': [user_dn('userone')],
+            'permittedSender': ['anyone'],
+        })
+        return_code = self.expander.expand(
+            'test@email.com',
+            'test_active@roles.eionet.europa.eu',
+            self.fixtures['content_7bit'])
+        self.assertEqual(return_code, RETURN_CODES['EX_OK'])
+
+    def test_role_without_l_attribute_allows_sending(self):
+        """ A role without the 'l' attribute should not be considered
+        deactivated (backwards compatibility).
+        """
+        user_dn = self.agent._user_dn
+
+        self.agent.get_role = Mock(return_value={
+            'description': 'no l attribute',
+            'members_data': {
+                user_dn('userone'): {
+                    'cn': ['User one'],
+                    'mail': ['user_one@example.com'],
+                },
+            },
+            'uniqueMember': [user_dn('userone')],
+            'permittedSender': ['anyone'],
+        })
+        return_code = self.expander.expand(
+            'test@email.com',
+            'test_nol@roles.eionet.europa.eu',
+            self.fixtures['content_7bit'])
+        self.assertEqual(return_code, RETURN_CODES['EX_OK'])
+
+    def test_is_deactivated(self):
+        """ Test is_deactivated with various 'l' attribute values.
+        """
+        self.assertTrue(
+            self.expander.is_deactivated({'l': ['deactivated:True']}))
+        self.assertTrue(
+            self.expander.is_deactivated({'l': ['Deactivated:True']}))
+        self.assertFalse(
+            self.expander.is_deactivated({'l': ['deactivated:False']}))
+        self.assertFalse(
+            self.expander.is_deactivated({}))
+>>>>>>> master
 
 
 if __name__ == '__main__':
