@@ -604,7 +604,107 @@ class ExpanderTest(unittest.TestCase):
                                            bounce_content)
         self.assertEqual(return_code, RETURN_CODES['EX_OK'])
 
-        # Verify it was sent to the owner's email
+        new_body = self.expander.send_emails.call_args[0][2]
+        em = email.message_from_string(new_body)
+        cc = em.get('Cc')
+        self.assertIn(existing_cc, cc)
+        self.assertIn(from_email, cc)
+
+    def test_skip_confirmation_email(self):
+        """ When skip_confirmation_email is set, no confirmation email should
+        be sent after successful expansion.
+        """
+        from_email = 'user_one@example.com'
+        role_email = 'test@roles.eionet.europa.eu'
+
+        self.expander.can_expand = Mock(return_value=True)
+        self.expander.send_confirmation_email = Mock(
+            return_value=RETURN_CODES['EX_OK'])
+        self.expander.skip_confirmation_email = 'true'
+
+        self.expander.expand(from_email, role_email,
+                             self.fixtures['content_7bit'])
+        self.assertFalse(self.expander.send_confirmation_email.called)
+
+    def test_confirmation_email_sent_by_default(self):
+        """ When skip_confirmation_email is not set, a confirmation email
+        should be sent after successful expansion.
+        """
+        from_email = 'user_one@example.com'
+        role_email = 'test@roles.eionet.europa.eu'
+
+        self.expander.can_expand = Mock(return_value=True)
+        self.expander.send_confirmation_email = Mock(
+            return_value=RETURN_CODES['EX_OK'])
+        self.expander.skip_confirmation_email = None
+
+        self.expander.expand(from_email, role_email,
+                             self.fixtures['content_7bit'])
+        self.assertTrue(self.expander.send_confirmation_email.called)
+
+    def test_also_send_to(self):
+        """ When also_send_to is configured, emails should also be sent
+        to those addresses.
+        """
+        from_email = 'user_one@example.com'
+        role_email = 'test@roles.eionet.europa.eu'
+
+        self.expander.can_expand = Mock(return_value=True)
+        self.expander.also_send_to = ['archive@example.com',
+                                      'monitor@example.com']
+
+        self.expander.expand(from_email, role_email,
+                             self.fixtures['content_7bit'])
+
+        # Find the call that sent to also_send_to
+        also_call = None
+        for call in self.expander.send_emails.call_args_list:
+            if call[0][1] == ['archive@example.com', 'monitor@example.com']:
+                also_call = call
+                break
+        self.assertIsNotNone(also_call,
+                             "also_send_to addresses were not sent to")
+
+    def test_can_expand_email_with_equals(self):
+        """ Test that from_email with = character is handled correctly.
+        Fix for #18085: bounced emails can have encoded addresses like
+        user=original@bounce.domain.com
+        """
+        role_data = {
+            'members_data': {},
+            'permittedSender': ['original@bounce.domain.com'],
+        }
+        self.expander.add_inherited_senders = lambda role_id, role_data: \
+            role_data
+        result = self.expander.can_expand(
+            'user=original@bounce.domain.com', 'test', role_data)
+        self.assertTrue(result)
+
+    def test_deactivated_role_rejected(self):
+        """ Email to a deactivated role should be rejected and the sender
+        should receive a notification.
+        """
+        user_dn = self.agent._user_dn
+
+        self.agent.get_role = Mock(return_value={
+            'description': 'deactivated role',
+            'l': ['deactivated:True'],
+            'members_data': {
+                user_dn('userone'): {
+                    'cn': ['User one'],
+                    'mail': ['user_one@example.com'],
+                },
+            },
+            'uniqueMember': [user_dn('userone')],
+            'permittedSender': ['anyone'],
+        })
+        return_code = self.expander.expand(
+            'test@email.com',
+            'test_deactivated@roles.eionet.europa.eu',
+            self.fixtures['content_7bit'])
+        self.assertEqual(return_code, RETURN_CODES['EX_OK'])
+
+        # Verify that the deactivation notice was sent to the sender
         self.assertTrue(self.expander.send_emails.called)
         call_args = self.expander.send_emails.call_args[0]
         # Should be sent from noreply

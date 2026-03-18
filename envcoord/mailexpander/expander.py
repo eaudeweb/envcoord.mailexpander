@@ -190,7 +190,8 @@ class Expander(object):
                     self.send_deactivated_email(from_email, role, role_email)
                 except Exception:
                     log.exception("Error sending deactivation notice")
-            return RETURN_CODES['EX_NOPERM']
+                    return RETURN_CODES['EX_TEMPFAIL']
+            return RETURN_CODES['EX_OK']
 
         # Check if from_email can expand
         if self.can_expand(from_email, role, role_data) is False:
