@@ -1,5 +1,8 @@
 1.00 (unreleased)
 ======================
+* Add: add handling for failed sending of emails to also_send_to [dumitval]
+* Bugfix: syntax fix in log.exception, typo fixes, shadowed email import [dumitval]
+* Feature: reject emails sent to deactivated roles [dumitval]
 * Bugfix: correct original to in the subject when CC is present
   [dumitval]
 * Change subject info to 'Subject [original sender] [original to role]'
