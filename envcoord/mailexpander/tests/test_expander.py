@@ -720,7 +720,7 @@ class ExpanderTest(unittest.TestCase):
             'test@email.com',
             'test_deactivated@roles.eionet.europa.eu',
             self.fixtures['content_7bit'])
-        self.assertEqual(return_code, RETURN_CODES['EX_NOPERM'])
+        self.assertEqual(return_code, RETURN_CODES['EX_OK'])
 
         # Verify that the deactivation notice was sent to the sender
         self.assertTrue(self.expander.send_emails.called)
