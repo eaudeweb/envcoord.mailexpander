@@ -9,6 +9,8 @@ log: syslog
 mailbox: /var/spool/mail/zope
 also_send_to: envcoord
 no_owner_send_to: ccpie.ccim@health.fgov.be
+# email address to send bounce notifications to
+bounce_send_to: ccpie.ccim@health.fgov.be
 
 # no-reply email address
 no-reply: no-reply@envcoord.health.fgov.be

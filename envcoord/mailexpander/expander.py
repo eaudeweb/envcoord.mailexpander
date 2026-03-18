@@ -109,6 +109,7 @@ class Expander(object):
         self.noreply = config.get('no_reply',
                                   'no-reply@envcoord.health.fgov.be')
         self.no_owner_send_to = config.get('no_owner_send_to', '').strip()
+        self.bounce_send_to = config.get('bounce_send_to', '').strip()
         self.filter_str = config.get('filter_str', '').strip()
         self.roles_to_filter = []
         roles_to_filter = config.get(
@@ -324,11 +325,12 @@ class Expander(object):
         return RETURN_CODES['EX_OK']
 
     def handle_bounce(self, role, content, debug_mode=False):
-        """ Handle bounce messages by forwarding them to role owners.
+        """ Handle bounce messages by forwarding them to the configured
+        bounce_send_to address.
 
         When an email sent to role members bounces, the mail server sends
         a bounce notification to role+bounce@domain. This method forwards
-        the bounce message to the role owners.
+        the bounce message to the configured bounce_send_to address.
 
         Arguments::
             role -- The role name (without +bounce suffix)
@@ -337,49 +339,19 @@ class Expander(object):
         """
         log.info("Processing bounce for role %s", role)
 
-        # Get role data from LDAP to find owners
-        try:
-            role_data = self.agent.get_role(role)
-        except ldap.SERVER_DOWN:
-            log.error("LDAP server is down")
-            return RETURN_CODES['EX_TEMPFAIL']
-        except (ldap.NO_SUCH_OBJECT, ValueError):
-            log.info("%r role not found in ldap", role)
-            return RETURN_CODES['EX_NOUSER']
-        except Exception as e:
-            log.error("%r role not found exception, %r" % (role, e))
-            return RETURN_CODES['EX_NOUSER']
-
-        # Get owners - same logic as owner- prefix (lines 175-198)
-        owners = role_data.get('owners_data', {})
-
-        if not owners:
-            log.warning("Role %s has no owners, cannot forward bounce", role)
-            if self.no_owner_send_to:
-                log.info("Sending bounce to fallback address %s",
-                        self.no_owner_send_to)
-                if not debug_mode:
-                    retval = self.send_emails(
-                        self.noreply, [self.no_owner_send_to], content)
-                    if retval != RETURN_CODES['EX_OK']:
-                        log.error("Error %s while sending bounce to %s",
-                                 retval, self.no_owner_send_to)
-                        return retval
+        if not self.bounce_send_to:
+            log.warning("No bounce_send_to configured, dropping bounce for "
+                        "role %s", role)
             return RETURN_CODES['EX_OK']
 
-        # Forward bounce to each owner
+        log.info("Sending bounce notification to %s", self.bounce_send_to)
         if not debug_mode:
-            # owner_dn is not needed, thus _ is used as a placeholder to avoid unused variable warning
-            for _, owner_data in owners.items():
-                retval = self.send_emails(self.noreply, owner_data['mail'],
-                                         content)
-                if retval != RETURN_CODES['EX_OK']:
-                    log.error("Error %s while sending bounce to %s",
-                             retval, owner_data['mail'])
-                    return retval
-        else:
-            log.debug("Debug mode: would forward bounce to %d owners",
-                     len(owners))
+            retval = self.send_emails(
+                self.noreply, [self.bounce_send_to], content)
+            if retval != RETURN_CODES['EX_OK']:
+                log.error("Error %s while sending bounce to %s",
+                         retval, self.bounce_send_to)
+                return retval
 
         return RETURN_CODES['EX_OK']
 
