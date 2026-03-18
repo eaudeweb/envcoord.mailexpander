@@ -149,8 +149,10 @@ class ExpanderTest(unittest.TestCase):
     def test_error_codes_in_agent(self):
         no_user = RETURN_CODES['EX_NOUSER']
         ok = RETURN_CODES['EX_OK']
-        assert self.expander.expand('user_one@example.com', 'test', "") == ok
-        assert self.expander.expand('user_one@example.com', 'test1', "") == \
+        assert self.expander.expand('user_one@example.com',
+                                    'test@roles.eionet.europa.eu', "") == ok
+        assert self.expander.expand('user_one@example.com',
+                                    'test1@roles.eionet.europa.eu', "") == \
             no_user
 
     def test_can_expand_by_inheritance(self):
@@ -582,19 +584,14 @@ class ExpanderTest(unittest.TestCase):
             ]
         })
         return_code = self.expander.expand('AWP2016n2017@email.com',
-                                           'test_insensitive',
+                                           'test_insensitive@roles.eionet.europa.eu',
                                            self.fixtures['content_7bit'])
         self.assertEqual(return_code, RETURN_CODES['EX_OK'])
 
-<<<<<<< HEAD
-    def test_return_path_with_bounce(self):
-        """ Test that Return-Path is set to role+bounce@domain """
-=======
     def test_send_headers(self):
         """ Test that From, Return-Path, X-Auth-ID, Sender are all set to
         role_email, and the original sender is added to CC.
         """
->>>>>>> master
         from_email = 'user_one@example.com'
         role_email = 'test@roles.eionet.europa.eu'
 
@@ -603,47 +600,12 @@ class ExpanderTest(unittest.TestCase):
                                            self.fixtures['content_7bit'])
         self.assertEqual(return_code, RETURN_CODES['EX_OK'])
 
-<<<<<<< HEAD
-        # Check that Return-Path was set correctly
-        new_body = self.expander.send_emails.call_args[0][2]
-        em = email.message_from_string(new_body)
-        self.assertEqual(em.get('return-path'), 'test+bounce@roles.eionet.europa.eu')
-
-    def test_bounce_forwarding_to_configured_address(self):
-        """ Test that bounce messages are forwarded to bounce_send_to """
-        from_email = 'mailer-daemon@somewhere.com'
-        role_email = 'test+bounce@roles.eionet.europa.eu'
-        bounce_content = self.fixtures['content_7bit']
-
-        self.expander.bounce_send_to = 'bounces@example.com'
-        return_code = self.expander.expand(from_email, role_email,
-                                           bounce_content)
-        self.assertEqual(return_code, RETURN_CODES['EX_OK'])
-
-        self.assertTrue(self.expander.send_emails.called)
-        call_args = self.expander.send_emails.call_args[0]
-        self.assertEqual(call_args[0], self.expander.noreply)
-        self.assertEqual(call_args[1], ['bounces@example.com'])
-        self.assertEqual(call_args[2], bounce_content)
-
-    def test_bounce_no_configured_address(self):
-        """ Test that bounces are dropped when no bounce_send_to is set """
-        from_email = 'mailer-daemon@somewhere.com'
-        role_email = 'test+bounce@roles.eionet.europa.eu'
-        bounce_content = self.fixtures['content_7bit']
-
-        self.expander.bounce_send_to = ''
-        return_code = self.expander.expand(from_email, role_email,
-                                           bounce_content)
-        self.assertEqual(return_code, RETURN_CODES['EX_OK'])
-        self.assertFalse(self.expander.send_emails.called)
-=======
         new_body = self.expander.send_emails.call_args[0][2]
         em = email.message_from_string(new_body)
 
         self.assertEqual(em.get('Sender'), role_email)
         self.assertEqual(em.get('From'), role_email)
-        self.assertEqual(em.get('Return-Path'), role_email)
+        self.assertEqual(em.get('Return-Path'), 'test+bounce@roles.eionet.europa.eu')
         self.assertEqual(em.get('X-Auth-ID'), role_email)
         self.assertIn(from_email, em.get('Cc'))
 
@@ -826,7 +788,50 @@ class ExpanderTest(unittest.TestCase):
             self.expander.is_deactivated({'l': ['deactivated:False']}))
         self.assertFalse(
             self.expander.is_deactivated({}))
->>>>>>> master
+
+    def test_return_path_with_bounce(self):
+        """ Test that Return-Path is set to role+bounce@domain """
+        from_email = 'user_one@example.com'
+        role_email = 'test@roles.eionet.europa.eu'
+
+        self.expander.can_expand = Mock(return_value=True)
+        return_code = self.expander.expand(from_email, role_email,
+                                           self.fixtures['content_7bit'])
+        self.assertEqual(return_code, RETURN_CODES['EX_OK'])
+
+        # Check that Return-Path was set correctly
+        new_body = self.expander.send_emails.call_args[0][2]
+        em = email.message_from_string(new_body)
+        self.assertEqual(em.get('return-path'), 'test+bounce@roles.eionet.europa.eu')
+
+    def test_bounce_forwarding_to_configured_address(self):
+        """ Test that bounce messages are forwarded to bounce_send_to """
+        from_email = 'mailer-daemon@somewhere.com'
+        role_email = 'test+bounce@roles.eionet.europa.eu'
+        bounce_content = self.fixtures['content_7bit']
+
+        self.expander.bounce_send_to = 'bounces@example.com'
+        return_code = self.expander.expand(from_email, role_email,
+                                           bounce_content)
+        self.assertEqual(return_code, RETURN_CODES['EX_OK'])
+
+        self.assertTrue(self.expander.send_emails.called)
+        call_args = self.expander.send_emails.call_args[0]
+        self.assertEqual(call_args[0], self.expander.noreply)
+        self.assertEqual(call_args[1], ['bounces@example.com'])
+        self.assertEqual(call_args[2], bounce_content)
+
+    def test_bounce_no_configured_address(self):
+        """ Test that bounces are dropped when no bounce_send_to is set """
+        from_email = 'mailer-daemon@somewhere.com'
+        role_email = 'test+bounce@roles.eionet.europa.eu'
+        bounce_content = self.fixtures['content_7bit']
+
+        self.expander.bounce_send_to = ''
+        return_code = self.expander.expand(from_email, role_email,
+                                           bounce_content)
+        self.assertEqual(return_code, RETURN_CODES['EX_OK'])
+        self.assertFalse(self.expander.send_emails.called)
 
 
 if __name__ == '__main__':
