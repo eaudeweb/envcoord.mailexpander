@@ -1,5 +1,11 @@
 1.00 (unreleased)
 ======================
+* Bugfix: decode RFC 2047 encoded subject headers before modifying,
+  preventing subject lines from disappearing for recipients [dumitval]
+* Bugfix: catch IOError on sendmail pipe failures so they fall back to
+  smtplib instead of propagating unhandled [dumitval]
+* Bugfix: write_to_archive now catches write errors and always closes the
+  file, preventing leaked locks and file handles [dumitval]
 * Add: add handling for failed sending of emails to also_send_to [dumitval]
 * Bugfix: syntax fix in log.exception, typo fixes, shadowed email import [dumitval]
 * Feature: send a copy of the bounced email to an ini configured email address [dumitval]

@@ -26,6 +26,7 @@ try:
 except ImportError:      # pragma: no cover
     from email.MIMEText import MIMEText
     from email.MIMEMultipart import MIMEMultipart
+from email.header import decode_header, Header
 
 try:
     from functools import wraps
@@ -223,14 +224,22 @@ class Expander(object):
         em = email.message_from_string(content)
         original_to = em.get('to')
         # Prepend to subject:
-        subject = em.get('subject', '(no-subject)')
-        if not ("[%s] " % role) in subject:
-            subject = "%s [Sent on behalf of %s] [%s]" % (
+        raw_subject = em.get('subject', '(no-subject)')
+        # Decode RFC 2047 encoded subject to unicode to avoid creating
+        # malformed headers when concatenating encoded and plain text
+        decoded_parts = decode_header(raw_subject)
+        subject = u''.join(
+            part.decode(charset or 'ascii') if isinstance(part, bytes) else part
+            for part, charset in decoded_parts
+        )
+        if not (u"[%s] " % role) in subject:
+            subject = u"%s [Sent on behalf of %s] [%s]" % (
                 subject, from_email, original_to)
+            encoded_subject = Header(subject, 'utf-8').encode()
             try:
-                em.replace_header('subject', subject)
+                em.replace_header('subject', encoded_subject)
             except KeyError:
-                em.add_header('subject', subject)
+                em['subject'] = encoded_subject
 
         sender = role_email
         # Add original sender to CC, since the email will be sent from
@@ -620,7 +629,7 @@ class Expander(object):
                           "/usr/sbin/sendmail exited with code %d", emails,
                           return_code)
             return return_code
-        except OSError:  # fallback to smtplib
+        except (OSError, IOError):  # fallback to smtplib
             # Since this is the same mailer we use localhost
             # Smtplib quotes the addresses internally
             log.exception("Cannot use sendmail program. Falling back to "
@@ -654,7 +663,11 @@ class Expander(object):
         """
         if self.archivefile is None:
             return  # No mailbox to write to
-        mboxfd = open(self.archivefile, 'ab')
+        try:
+            mboxfd = open(self.archivefile, 'ab')
+        except IOError as e:
+            log.error("Unable to open archive %s: %s", self.archivefile, e)
+            return
         try:
             # Get an exclusive lock - don't block
             fcntl.lockf(mboxfd, fcntl.LOCK_EX | fcntl.LOCK_NB)
@@ -662,16 +675,15 @@ class Expander(object):
             # if we get an EAGAIN or EACCES error
             # except IOError, e:
             #     if e.errno in (errno.EAGAIN, errno.EACCES): ...
+            mboxfd.write('From ' + from_email + '  ' + time.asctime() + '\n')
+            mboxfd.write(content)
+            mboxfd.write('\n')
+            fcntl.lockf(mboxfd, fcntl.LOCK_UN)
         except Exception as e:
-            log.error("Unable to acquire exclusive lock on %s; %s" %
-                      (self.archivefile, e))
-            return
-        mboxfd.write('From ' + from_email + '  ' + time.asctime() + '\n')
-        mboxfd.write(content)
-        mboxfd.write('\n')
-        # Not really necessary - we close it
-        fcntl.lockf(mboxfd, fcntl.LOCK_UN)
-        mboxfd.close()
+            log.error("Unable to write to archive %s: %s",
+                      self.archivefile, e)
+        finally:
+            mboxfd.close()
 
 
 def usage():
