@@ -318,7 +318,7 @@ class Expander(object):
             # If there are any addresses to always send to
             if self.also_send_to != ['']:
                 retval = self.send_emails(
-                    role_email, self.also_send_to, content)
+                    'owner-' + role_email, self.also_send_to, content)
                 if retval != RETURN_CODES['EX_OK']:
                     log.error("Error %s while sending to %s",
                               retval, self.also_send_to)
@@ -327,7 +327,7 @@ class Expander(object):
             # Send e-mails
             for emails in email_batches:
                 retval = self.send_emails(
-                    role_email, emails, content)
+                    'owner-' + role_email, emails, content)
                 if retval != RETURN_CODES['EX_OK']:
                     log.error("Error %s while sending to %s",
                               retval, emails)
