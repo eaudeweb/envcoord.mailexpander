@@ -182,6 +182,17 @@ class Expander(object):
                         return RETURN_CODES['EX_CONFIG']
             return RETURN_CODES['EX_OK']
 
+        # Bounces, DSNs and auto-replies arrive with a null or unqualified
+        # envelope sender (e.g. MAILER-DAEMON). Such a sender can never be a
+        # permitted poster, so drop it silently instead of crashing on the
+        # '@' split in can_expand (which bounced ~44k messages as 5.3.0) or
+        # bouncing it back as backscatter. Bounces meant for humans already
+        # took the owner-/+bounce paths above.
+        if from_email.count('@') != 1:
+            log.info("Dropping auto-generated mail from %r to %s",
+                     from_email, role)
+            return RETURN_CODES['EX_OK']
+
         # Check if role is deactivated
         if self.is_deactivated(role_data):
             log.info("Role %s is deactivated, rejecting email from %s",
@@ -206,12 +217,23 @@ class Expander(object):
         # Prepend to subject:
         raw_subject = em.get('subject', '(no-subject)')
         # Decode RFC 2047 encoded subject to unicode to avoid creating
-        # malformed headers when concatenating encoded and plain text
-        decoded_parts = decode_header(raw_subject)
-        subject = u''.join(
-            part.decode(charset or 'ascii') if isinstance(part, bytes) else part
-            for part, charset in decoded_parts
-        )
+        # malformed headers when concatenating encoded and plain text.
+        # Subjects can carry undeclared 8-bit bytes or bogus charset labels
+        # (e.g. unknown-8bit); decode defensively so a bad subject never
+        # raises and bounces the message (5.3.0 internal software error).
+        subject = u''
+        for part, charset in decode_header(raw_subject):
+            if not isinstance(part, bytes):
+                subject += part
+                continue
+            for codec in (charset, 'utf-8', 'latin-1'):
+                if not codec:
+                    continue
+                try:
+                    subject += part.decode(codec)
+                    break
+                except (UnicodeDecodeError, LookupError):
+                    continue
         if not (u"[%s] " % role) in subject:
             subject = u"%s [Sent on behalf of %s] [%s]" % (
                 subject, from_email, original_to)
