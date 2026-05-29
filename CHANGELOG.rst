@@ -1,7 +1,13 @@
 1.00 (unreleased)
 ======================
-* Bugfix: decode RFC 2047 encoded subject headers before modifying,
-  preventing subject lines from disappearing for recipients [dumitval]
+* Bugfix: drop mail from a null/unqualified envelope sender (e.g.
+  MAILER-DAEMON) instead of crashing in can_expand on the '@' split; this
+  was bouncing bounces, DSNs and auto-replies as "5.3.0 internal software
+  error" [dumitval]
+* Bugfix: decode subject headers (RFC 2047, plus undeclared 8-bit bytes and
+  unknown charset labels) before modifying, so subject lines no longer
+  disappear for recipients and a malformed subject can't bounce the
+  message [dumitval]
 * Bugfix: catch IOError on sendmail pipe failures so they fall back to
   smtplib instead of propagating unhandled [dumitval]
 * Bugfix: write_to_archive now catches write errors and always closes the
