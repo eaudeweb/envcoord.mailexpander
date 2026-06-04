@@ -1,5 +1,8 @@
 1.00 (unreleased)
 ======================
+* Change: route owner-addressed delivery-failure notices (null-sender DSNs)
+  to bounce_send_to/no_owner_send_to instead of fanning them out to each role's
+  LDAP owners [valipod]
 * Bugfix: drop mail from a null/unqualified envelope sender (e.g.
   MAILER-DAEMON) instead of crashing in can_expand on the '@' split; this
   was bouncing bounces, DSNs and auto-replies as "5.3.0 internal software

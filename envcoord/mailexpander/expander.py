@@ -157,6 +157,28 @@ class Expander(object):
         top_role = role.split('-')[0]
 
         if send_to_owners is True:  # Send e-mail to owners
+            # MTA delivery-failure notices ("Undeliverable" / MAILER-DAEMON
+            # DSNs) bounce back to the owner-<role>@ envelope sender we stamp
+            # on every outbound copy, and arrive with a null envelope sender
+            # (Postfix passes an empty/unqualified `from_email`, exactly like
+            # the bare-role guard further down -- confirmed by the bounce
+            # headers: `smtp.mailfrom=;`, `auto-submitted: auto-replied`).
+            # These were flooding the role owners (one owner received every
+            # single bounce), so per client request funnel them into a single
+            # mailbox instead. Genuine mail to owner-<role>@ (a real human
+            # trying to reach the list owners) has a normal sender and falls
+            # through to the owners below, unchanged.
+            if from_email.count('@') != 1:
+                target = self.bounce_send_to or self.no_owner_send_to
+                log.info("Delivery-failure notice for role %s, routing to %s",
+                         role, target)
+                if debug_mode:
+                    return RETURN_CODES['EX_OK']
+                if not target:
+                    log.error("The configuration misses bounce_send_to / "
+                              "no_owner_send_to for delivery-failure routing")
+                    return RETURN_CODES['EX_CONFIG']
+                return self.send_emails(self.noreply, [target], content)
             owners = role_data['owners_data']
             for owner_dn, owner_data in owners.items():
                 retval = self.send_emails(from_email, owner_data['mail'],
