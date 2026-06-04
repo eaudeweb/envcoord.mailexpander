@@ -283,6 +283,44 @@ class ExpanderTest(unittest.TestCase):
         self.assertEquals(self.expander.send_emails.call_args[0][1], [
             'user_three@example.com', 'user_3333@example.com'])
 
+    def test_owner_ndr_routed_to_single_mailbox(self):
+        """ MTA delivery-failure notices ("Undeliverable" DSNs) bounce back to
+        owner-<role>@ with a null envelope sender. They must be funnelled to
+        the single configured mailbox, not fanned out to the role's owners.
+        """
+        self.expander.bounce_send_to = 'ccpie.ccim@health.fgov.be'
+        # role-with-an-owner, but the DSN has a null/empty envelope sender
+        for null_sender in ('', 'MAILER-DAEMON'):
+            self.expander.send_emails.reset_mock()
+            res = self.expander.expand(null_sender,
+                                       'owner-test@roles.eionet.europa.eu',
+                                       self.fixtures['content_7bit'])
+            self.assertEqual(res, RETURN_CODES['EX_OK'])
+            self.assertEqual(self.expander.send_emails.call_args[0][1],
+                             ['ccpie.ccim@health.fgov.be'])
+
+    def test_owner_ndr_falls_back_to_no_owner_send_to(self):
+        """ If bounce_send_to is unset, NDR routing falls back to
+        no_owner_send_to.
+        """
+        self.expander.bounce_send_to = ''
+        self.expander.no_owner_send_to = 'ccpie.ccim@health.fgov.be'
+        res = self.expander.expand('', 'owner-test@roles.eionet.europa.eu',
+                                   self.fixtures['content_7bit'])
+        self.assertEqual(res, RETURN_CODES['EX_OK'])
+        self.assertEqual(self.expander.send_emails.call_args[0][1],
+                         ['ccpie.ccim@health.fgov.be'])
+
+    def test_owner_ndr_missing_config(self):
+        """ A delivery-failure notice with no mailbox configured returns
+        EX_CONFIG rather than silently dropping it.
+        """
+        self.expander.bounce_send_to = ''
+        self.expander.no_owner_send_to = ''
+        res = self.expander.expand('', 'owner-test@roles.eionet.europa.eu',
+                                   self.fixtures['content_7bit'])
+        self.assertEqual(res, RETURN_CODES['EX_CONFIG'])
+
     def test_send_filtered(self):
 
         from_email = 'test@email.com'
