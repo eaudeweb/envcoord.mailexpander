@@ -26,7 +26,7 @@ setup(
             'roleexpander = envcoord.mailexpander.expander:main',
         ]
     },
-    install_requires=[],
+    install_requires=['python-ldap'],
     tests_require=tests_require,
     extras_require={
         'testing': tests_require,

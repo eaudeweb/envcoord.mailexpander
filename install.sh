@@ -9,7 +9,6 @@ curl $URL > /tmp/virtualenv.tgz
 tar xzf /tmp/virtualenv.tgz -C ./
 /usr/bin/python2.7 $VENV --clear --system-site-packages ./
 
-bin/pip install -e .
-bin/pip install envcoord.mailexpander[testing]
+bin/pip install -e .[testing]
 
 rm -rf ./virtualenv*
