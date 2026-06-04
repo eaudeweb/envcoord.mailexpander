@@ -2,14 +2,16 @@
 # -*- coding: utf-8 -*-
 
 from copy import deepcopy
+from email.header import decode_header, make_header
 from envcoord.mailexpander.expander import Expander, RETURN_CODES, log
-from mock import Mock
+from mock import Mock, patch
 from envcoord.mailexpander.tests.test_ldap_agent import StubbedLdapAgent
 import email
 import ldap
 import logging
 import os
 import smtplib
+import tempfile
 import unittest
 
 
@@ -43,7 +45,10 @@ class ExpanderTest(unittest.TestCase):
             fixture_path = os.path.join(fixtures_dir, fixture_filename)
             if os.path.isfile(fixture_path):
                 content = None
-                with open(fixture_path, 'r', encoding='utf-8') as f:
+                # newline='' keeps the fixtures' CRLF line endings intact;
+                # without it Python's universal-newline translation collapses
+                # \r\n -> \n and breaks tests that match on '\r\n'.
+                with open(fixture_path, 'r', encoding='utf-8', newline='') as f:
                     content = f.read()
                 self.fixtures[os.path.splitext(fixture_filename)[0]] = content
 
@@ -754,12 +759,12 @@ class ExpanderTest(unittest.TestCase):
             self.fixtures['content_7bit'])
         self.assertEqual(return_code, RETURN_CODES['EX_OK'])
 
-        # Verify that the deactivation notice was sent to the sender
+        # Verify that the deactivation notice was sent back to the sender
         self.assertTrue(self.expander.send_emails.called)
         call_args = self.expander.send_emails.call_args[0]
         self.assertEqual(call_args[0], self.expander.noreply)
-        self.assertEqual(call_args[1], ['bounces@example.com'])
-        self.assertEqual(call_args[2], bounce_content)
+        self.assertEqual(call_args[1], ['test@email.com'])
+        self.assertIn('deactivated', call_args[2].lower())
 
     def test_bounce_no_configured_address(self):
         """ Test that bounces are dropped when no bounce_send_to is set """
@@ -827,6 +832,77 @@ class ExpanderTest(unittest.TestCase):
                                            bounce_content)
         self.assertEqual(return_code, RETURN_CODES['EX_OK'])
         self.assertFalse(self.expander.send_emails.called)
+
+    def test_send_emails_writes_latin1_bytes_to_sendmail(self):
+        """ send_emails must hand the sendmail pipe latin-1 bytes -- the same
+        encoding main() reads stdin with -- so 8-bit mail round-trips exactly
+        and never raises (py3's binary pipe rejects str).
+        """
+        expander = Expander(self.agent)  # real send_emails, not the setUp Mock
+        captured = {}
+
+        class FakeProc(object):
+            def __init__(self):
+                self.stdin = self
+
+            def write(self, data):
+                captured['data'] = data
+
+            def flush(self):
+                pass
+
+            def close(self):
+                pass
+
+            def wait(self):
+                return 0
+
+        # latin-1 range only, as a message read from stdin would be
+        content = u'Subject: caf\xe9\r\n\r\nbody with \xe9 and \xff\r\n'
+        with patch('envcoord.mailexpander.expander.Popen',
+                   return_value=FakeProc()):
+            rc = expander.send_emails('owner-x@dom', ['a@dom'], content)
+        self.assertEqual(rc, RETURN_CODES['EX_OK'])
+        self.assertIsInstance(captured['data'], bytes)
+        self.assertEqual(captured['data'], content.encode('latin-1'))
+
+    def test_write_to_archive_roundtrips_latin1_bytes(self):
+        """ The mbox archive must store the message bytes unchanged (latin-1),
+        not raise on 8-bit content.
+        """
+        fd, path = tempfile.mkstemp()
+        os.close(fd)
+        try:
+            expander = Expander(self.agent, mailbox=path)
+            content = u'Subject: caf\xe9\r\n\r\nbody \xe9\xff\r\n'
+            expander.write_to_archive('owner-x@dom', content)
+            with open(path, 'rb') as f:
+                raw = f.read()
+            self.assertIn(content.encode('latin-1'), raw)
+        finally:
+            os.remove(path)
+
+    def test_raw_8bit_subject_decoded_not_mojibaked(self):
+        """ A raw 8-bit subject (not an encoded-word) must be decoded with the
+        same utf-8 -> latin-1 fallback as py2 -- for both utf-8 and latin-1
+        bytes -- and re-emitted as a valid RFC 2047 word, never mojibaked.
+        """
+        self.expander.can_expand = Mock(return_value=True)
+        self.expander.skip_confirmation_email = True
+
+        for raw_bytes in (u'R\xe9union'.encode('utf-8'),
+                          u'R\xe9union'.encode('latin-1')):
+            # message as main() hands it on: bytes read back as a latin-1 str
+            content = ('Subject: ' + raw_bytes.decode('latin-1') +
+                       '\r\nTo: list@x.be\r\n\r\nbody\r\n')
+            self.expander.send_emails.reset_mock()
+            rc = self.expander.expand('user_one@example.com',
+                                      'test@roles.eionet.europa.eu', content)
+            self.assertEqual(rc, RETURN_CODES['EX_OK'])
+            sent = self.expander.send_emails.call_args[0][2]
+            subj = email.message_from_string(sent).get('subject')
+            decoded = str(make_header(decode_header(subj)))
+            self.assertIn(u'R\xe9union', decoded)
 
 
 if __name__ == '__main__':

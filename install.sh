@@ -1,15 +1,14 @@
 #!/bin/sh
 
-rm -rf bin/ lib/ lib64/ local/ include/ build/ dist/ htmlcov/
+rm -rf bin/ lib/ lib64/ local/ include/ build/ dist/ htmlcov/ pyvenv.cfg
 
-VENV=virtualenv-15.2.0/virtualenv.py
-URL="https://files.pythonhosted.org/packages/b1/72/2d70c5a1de409ceb3a27ff2ec007ecdd5cc52239e7c74990e32af57affe9/virtualenv-15.2.0.tar.gz"
+# Create the virtualenv in the repo root (stdlib venv, no download needed).
+# Do NOT pass --clear with '.' as the target: venv's --clear deletes the
+# entire contents of the target directory, which here is the repo root. The
+# rm above already removes any previous venv directories.
+python3 -m venv .
 
-curl $URL > /tmp/virtualenv.tgz
-tar xzf /tmp/virtualenv.tgz -C ./
-/usr/bin/python2.7 $VENV --clear --system-site-packages ./
-
-bin/pip install -e .
-bin/pip install envcoord.mailexpander[testing]
-
-rm -rf ./virtualenv*
+# python-ldap (an install_requires dependency) builds a C extension, so the
+# system needs a compiler and the LDAP/SASL dev headers
+# (apt: gcc python3-dev libldap2-dev libsasl2-dev).
+bin/pip install -e .[testing]

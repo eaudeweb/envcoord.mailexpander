@@ -246,8 +246,16 @@ class Expander(object):
         subject = u''
         for part, charset in decode_header(raw_subject):
             if not isinstance(part, bytes):
-                subject += part
-                continue
+                # decode_header yields str for plain (non encoded-word) text.
+                # The message is read as latin-1 (byte-preserving, see main()),
+                # so recover the original bytes and run them through the same
+                # utf-8 -> latin-1 fallback below; this decodes a raw 8-bit
+                # subject correctly instead of mojibaking it.
+                try:
+                    part = part.encode('latin-1')
+                except UnicodeEncodeError:
+                    subject += part
+                    continue
             for codec in (charset, 'utf-8', 'latin-1'):
                 if not codec:
                     continue
@@ -259,7 +267,16 @@ class Expander(object):
         if not (u"[%s] " % role) in subject:
             subject = u"%s [Sent on behalf of %s] [%s]" % (
                 subject, from_email, original_to)
-            encoded_subject = Header(subject, 'utf-8').encode()
+            # Only RFC 2047-encode when the subject actually carries non-ASCII
+            # characters; keep plain ASCII subjects as-is. email.header.Header
+            # with an explicit 'utf-8' charset Q-encodes even pure-ASCII text on
+            # Python 3, which would turn every outgoing subject into an
+            # unreadable =?utf-8?q?...?= blob (Python 2 left ASCII untouched).
+            try:
+                subject.encode('ascii')
+                encoded_subject = subject
+            except UnicodeEncodeError:
+                encoded_subject = Header(subject, 'utf-8').encode()
             try:
                 em.replace_header('subject', encoded_subject)
             except KeyError:
@@ -557,9 +574,11 @@ class Expander(object):
                                      'templates',
                                      'deactivated_role_email.html')
         if os.path.isfile(template_path):
-            f = open(template_path, 'rb')
-            content = f.read()
-            f.close()
+            # Text mode: the template is HTML/utf-8 and the {{...}} substitutions
+            # below operate on str. Reading bytes would raise TypeError on
+            # Python 3 (str vs bytes) -- see send_confirmation_email.
+            with open(template_path, 'r', encoding='utf-8') as f:
+                content = f.read()
 
         content = content.replace('{{role_id}}', role)
         content = content.replace('{{role_email}}', role_email)
@@ -639,7 +658,8 @@ class Expander(object):
                         smtplib.quoteaddr(from_email),
                         '--'] + quotedemails,
                        stdin=PIPE)
-            ps.stdin.write(content.encode('utf-8') if isinstance(content, str) else content)
+            ps.stdin.write(content.encode('latin-1')
+                           if isinstance(content, str) else content)
             ps.stdin.flush()
             ps.stdin.close()
             return_code = ps.wait()
@@ -662,7 +682,9 @@ class Expander(object):
             smtp = smtplib.SMTP('localhost')
             try:
                 try:
-                    smtp.sendmail(from_email, emails, content)
+                    smtp.sendmail(from_email, emails,
+                                  content.encode('latin-1')
+                                  if isinstance(content, str) else content)
                     log.debug("Sent emails to %r", emails)
                 except smtplib.SMTPException:
                     log.exception("SMTP Error")
@@ -687,7 +709,9 @@ class Expander(object):
         if self.archivefile is None:
             return  # No mailbox to write to
         try:
-            mboxfd = open(self.archivefile, 'a', encoding='utf-8')
+            # latin-1 matches how the message was read from stdin (see main())
+            # so the archived bytes are identical to what arrived / was sent.
+            mboxfd = open(self.archivefile, 'a', encoding='latin-1')
         except IOError as e:
             log.error("Unable to open archive %s: %s", self.archivefile, e)
             return
@@ -779,11 +803,14 @@ def main():
         # untouched
         content = ""
         if not debug_mode:
-            while True:
-                buffer = sys.stdin.read()
-                if not buffer:
-                    break
-                content += buffer
+            # Read the raw message as bytes and decode it as latin-1. Postfix
+            # pipes arbitrary 8-bit mail, but py3's text-mode sys.stdin decodes
+            # with the locale charset (ASCII under Postfix) and would raise
+            # UnicodeDecodeError on any accented message -> EX_SOFTWARE -> a
+            # 5.3.0 bounce. latin-1 maps every byte 1:1 so it never fails, and
+            # the matching latin-1 encode in send_emails / write_to_archive
+            # reproduces the exact original bytes.
+            content = sys.stdin.buffer.read().decode('latin-1')
 
         # Open connection with the ldap
         try:
