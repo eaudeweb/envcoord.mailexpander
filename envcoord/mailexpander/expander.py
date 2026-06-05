@@ -235,7 +235,6 @@ class Expander(object):
         # Add the necessary headers such as Received and modify the subject
         # with [role]
         em = email.message_from_string(content)
-        original_to = em.get('to')
         # Prepend to subject:
         raw_subject = em.get('subject', '(no-subject)')
         # Decode RFC 2047 encoded subject to unicode to avoid creating
@@ -265,8 +264,14 @@ class Expander(object):
                 except (UnicodeDecodeError, LookupError):
                     continue
         if not (u"[%s] " % role) in subject:
+            # Tag with the list address (role_email), NOT the incoming To:
+            # header. em.get('to') on a reply can be the entire recipient list
+            # -- many KB of folded, RFC 2047-encoded addresses -- which bloats
+            # the Subject past what Exchange/Outlook accepts, so the message is
+            # delivered with an empty subject (and it leaked every recipient
+            # address into the Subject line).
             subject = u"%s [Sent on behalf of %s] [%s]" % (
-                subject, from_email, original_to)
+                subject, from_email, role_email)
             # Only RFC 2047-encode when the subject actually carries non-ASCII
             # characters; keep plain ASCII subjects as-is. email.header.Header
             # with an explicit 'utf-8' charset Q-encodes even pure-ASCII text on

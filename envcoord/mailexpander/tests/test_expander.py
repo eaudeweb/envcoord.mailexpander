@@ -904,6 +904,30 @@ class ExpanderTest(unittest.TestCase):
             decoded = str(make_header(decode_header(subj)))
             self.assertIn(u'R\xe9union', decoded)
 
+    def test_subject_tag_uses_role_address_not_full_to(self):
+        """ The Subject tag must carry the short list address, never the whole
+        incoming To: header. A reply whose To: lists every recipient must not
+        bloat the Subject (Exchange drops oversized subjects, so recipients
+        would otherwise get the message with no subject at all).
+        """
+        self.expander.can_expand = Mock(return_value=True)
+        self.expander.skip_confirmation_email = True
+
+        big_to = ', '.join('user%02d@example.com' % i for i in range(60))
+        content = ('From: sender@example.com\r\n'
+                   'To: ' + big_to + '\r\n'
+                   'Subject: Hello\r\n\r\nbody\r\n')
+        role_email = 'test@roles.eionet.europa.eu'
+        rc = self.expander.expand('user_one@example.com', role_email, content)
+        self.assertEqual(rc, RETURN_CODES['EX_OK'])
+
+        sent = self.expander.send_emails.call_args[0][2]
+        subj = email.message_from_string(sent).get('subject')
+        decoded = str(make_header(decode_header(subj)))
+        self.assertIn(u'[%s]' % role_email, decoded)      # list address present
+        self.assertNotIn(u'user59@example.com', decoded)  # full To excluded
+        self.assertLess(len(subj), 300)                   # bounded, not multi-KB
+
 
 if __name__ == '__main__':
     unittest.main()

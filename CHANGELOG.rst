@@ -1,5 +1,6 @@
 1.00 (unreleased)
 ======================
+* Fix oversized/empty Subject: tag with the list address, not the To: header [valipod]
 * Fix remaining Python 3 migration regressions; modernise install.sh
 * Change: route owner-addressed delivery-failure notices (null-sender DSNs)
   to bounce_send_to/no_owner_send_to instead of fanning them out to each role's
