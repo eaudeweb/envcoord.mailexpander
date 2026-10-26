@@ -9,7 +9,10 @@ import email
 import ldap
 import logging
 import os
+import shutil
 import smtplib
+import stat
+import tempfile
 import unittest
 
 
@@ -526,10 +529,7 @@ class ExpanderTest(unittest.TestCase):
         self.assertEqual(return_code, RETURN_CODES['EX_NOUSER'])
 
     def test_batch(self):
-        """ Test sending batch e-mails. Generate 120 ldap users and expect
-        batches of 50 e-mails
-
-        """
+        """ 122 members get the message through one sendmail call """
         user_dn = self.agent._user_dn
 
         user_dns = []
@@ -555,23 +555,14 @@ class ExpanderTest(unittest.TestCase):
 
         self.mock_conn.search_s.side_effect = ldap_search_called
 
-        global total_mails
-        total_mails = 0  # Count all emails
-
-        def send_emails_called(from_email, emails, content):
-            assert len(emails) <= 50
-            global total_mails
-            total_mails += len(emails)
-            return RETURN_CODES['EX_OK']
-
-        self.expander.send_emails.side_effect = send_emails_called
         self.expander.expand('user_one@example.com',
                              'test@roles.eionet.europa.eu',
                              self.fixtures['content_7bit'])
         # we should have 4 users initially in test, of which user3
         # has two emails + 118 users added in this method;
         # 3 x 1 + 1 * 2 + 118 = 123
-        self.assertEqual(total_mails, 123)
+        self.assertEqual(self.expander.send_emails.call_count, 1)
+        self.assertEqual(len(self.expander.send_emails.call_args[0][1]), 123)
 
     def test_empty_role(self):
         """ Test invalid role scenarios (missing members,
@@ -714,14 +705,12 @@ class ExpanderTest(unittest.TestCase):
         self.expander.expand(from_email, role_email,
                              self.fixtures['content_7bit'])
 
-        # Find the call that sent to also_send_to
-        also_call = None
-        for call in self.expander.send_emails.call_args_list:
-            if call[0][1] == ['archive@example.com', 'monitor@example.com']:
-                also_call = call
-                break
-        self.assertIsNotNone(also_call,
-                             "also_send_to addresses were not sent to")
+        # in the same sendmail call as the members
+        self.assertEqual(self.expander.send_emails.call_count, 1)
+        recipients = self.expander.send_emails.call_args[0][1]
+        self.assertIn('archive@example.com', recipients)
+        self.assertIn('monitor@example.com', recipients)
+        self.assertIn('user_one@example.com', recipients)
 
     def test_can_expand_email_with_equals(self):
         """ Test that from_email with = character is handled correctly.
@@ -897,6 +886,91 @@ class ExpanderTest(unittest.TestCase):
         self.assertIn(u'[%s]' % role_email, decoded)      # list address present
         self.assertNotIn(u'user59@example.com', decoded)  # full To excluded
         self.assertLess(len(subj), 300)                   # bounded, not multi-KB
+
+    def test_reply_subject_not_tagged_twice(self):
+        self.expander.can_expand = Mock(return_value=True)
+        self.expander.skip_confirmation_email = True
+        role_email = 'test@roles.eionet.europa.eu'
+        subject = ('Re: Hello [Sent on behalf of a@example.com] [%s]'
+                   % role_email)
+        content = 'Subject: %s\n\nbody\n' % subject
+        rc = self.expander.expand('user_one@example.com', role_email, content)
+        self.assertEqual(rc, RETURN_CODES['EX_OK'])
+        sent = self.expander.send_emails.call_args[0][2]
+        sent_subject = email.message_from_string(sent).get('subject')
+        self.assertEqual(' '.join(sent_subject.split()), subject)
+
+    def test_mail_to_owners_in_one_call(self):
+        self.ldap_data[0][2][0][1]['owner'].append(self.agent._user_dn('user4'))
+        rc = self.expander.expand('user_one@example.com',
+                                  'owner-test@roles.eionet.europa.eu',
+                                  self.fixtures['content_7bit'])
+        self.assertEqual(rc, RETURN_CODES['EX_OK'])
+        self.assertEqual(self.expander.send_emails.call_count, 1)
+        self.assertEqual(sorted(self.expander.send_emails.call_args[0][1]), [
+            'user_3333@example.com', 'user_four@example.com',
+            'user_three@example.com'])
+
+
+class SendmailTest(unittest.TestCase):
+    """ expand() with the real send_emails and a fake sendmail script """
+
+    def setUp(self):
+        # the LDAP stub and the fixtures of ExpanderTest
+        fixture = ExpanderTest('test_batch')
+        fixture.setUp()
+        self.agent = fixture.agent
+        self.fixtures = fixture.fixtures
+        self.tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.tmp)
+        self.mailbox = os.path.join(self.tmp, 'mbox')
+        self.exit_code = os.path.join(self.tmp, 'exit_code')
+        sendmail = os.path.join(self.tmp, 'sendmail')
+        with open(sendmail, 'w') as f:
+            f.write('#!/bin/sh\n'
+                    'echo "$@" >> %(tmp)s/calls\n'
+                    'cat > /dev/null\n'
+                    'exit $(cat %(tmp)s/exit_code 2>/dev/null || echo 0)\n'
+                    % {'tmp': self.tmp})
+        os.chmod(sendmail, stat.S_IRWXU)
+        self.expander = Expander(self.agent, sendmail_path=sendmail,
+                                 mailbox=self.mailbox,
+                                 skip_confirmation_email='true')
+
+    def calls(self):
+        with open(os.path.join(self.tmp, 'calls')) as f:
+            return f.read().splitlines()
+
+    def test_one_call_for_all_members(self):
+        rc = self.expander.expand('user_one@example.com',
+                                  'test@roles.eionet.europa.eu',
+                                  self.fixtures['content_7bit'])
+        self.assertEqual(rc, RETURN_CODES['EX_OK'])
+        [call] = self.calls()
+        self.assertTrue(call.startswith(
+            '-f <owner-test@roles.eionet.europa.eu> -- '))
+        self.assertEqual(len(call.split(' -- ')[1].split()), 5)
+        self.assertTrue(os.path.exists(self.mailbox))
+
+    def test_tempfail_is_returned_to_postfix(self):
+        """ EX_TEMPFAIL from sendmail means nothing was queued: Postfix must
+        retry the message, and it is not archived yet. """
+        with open(self.exit_code, 'w') as f:
+            f.write('75')
+        rc = self.expander.expand('user_one@example.com',
+                                  'test@roles.eionet.europa.eu',
+                                  self.fixtures['content_7bit'])
+        self.assertEqual(rc, RETURN_CODES['EX_TEMPFAIL'])
+        self.assertEqual(len(self.calls()), 1)
+        self.assertFalse(os.path.exists(self.mailbox))
+
+    def test_sendmail_failure_is_not_success(self):
+        with open(self.exit_code, 'w') as f:
+            f.write('1')
+        rc = self.expander.expand('user_one@example.com',
+                                  'test@roles.eionet.europa.eu',
+                                  self.fixtures['content_7bit'])
+        self.assertEqual(rc, 1)
 
 
 if __name__ == '__main__':

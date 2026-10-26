@@ -125,8 +125,6 @@ class Expander(object):
         `from_email` is allowed to do so. Prepend the `role` name to the e-mail
         subject. Modify the headers according to these priciples:
         http://tools.ietf.org/html/rfc5321#page-31
-        Also queue max 50 messages per send so that the mailer can deliver them
-        asynchronously.
 
         Arguments::
 
@@ -200,13 +198,13 @@ class Expander(object):
                     return RETURN_CODES['EX_CONFIG']
                 return self.send_emails(self.noreply, [target], content)
             owners = role_data['owners_data']
-            for owner_dn, owner_data in owners.items():
-                retval = self.send_emails(from_email, owner_data['mail'],
-                                          content)
-                if retval != RETURN_CODES['EX_OK']:
-                    log.error("Error %s while sending to %s",
-                              retval, owner_data['mail'])
-                    return retval
+            owner_emails = [mail for owner_data in owners.values()
+                            for mail in owner_data.get('mail', [])]
+            retval = self.send_emails(from_email, owner_emails, content)
+            if retval != RETURN_CODES['EX_OK']:
+                log.error("Error %s while sending to %s",
+                          retval, owner_emails)
+                return retval
             if not owners:
                 log.info("No owner found, sending to %s",
                          self.no_owner_send_to)
@@ -275,7 +273,8 @@ class Expander(object):
                     break
                 except (UnicodeDecodeError, LookupError):
                     continue
-        if not (u"[%s] " % role) in subject:
+        # replies to the list already carry the tag
+        if u"[%s]" % role_email not in subject:
             # Tag with the list address (role_email), NOT the incoming To:
             # header. em.get('to') on a reply can be the entire recipient list
             # -- many KB of folded, RFC 2047-encoded addresses -- which bloats
@@ -330,10 +329,10 @@ class Expander(object):
 
         content = em.as_string()
 
-        # Split the emails in to batches
-        email_batches = [[]]
-        batch = 0
-        batch_size = 50  # Send in email batches
+        # One sendmail call for everybody: Postfix queues the message for all
+        # recipients or for none, so EX_TEMPFAIL can be retried without
+        # sending duplicates.
+        recipients = [] if self.also_send_to == [''] else list(self.also_send_to)
 
         for dn, data in role_data['members_data'].iteritems():
             # if there is a filter and the mail was not sent directly to
@@ -354,33 +353,17 @@ class Expander(object):
                         break
                 if filter_out:
                     continue
-            if len(email_batches[batch]) >= batch_size:
-                batch += 1
-                email_batches.append([])  # Init new batch
-            clean_addresses = filter(lambda i: i.find(
-                '@') > 0, data.get('mail', ['']))
-            email_batches[batch].extend(clean_addresses)
+            recipients.extend(i for i in data.get('mail', [''])
+                              if i.find('@') > 0)
 
         if not debug_mode:
+            retval = self.send_emails('owner-' + role_email, recipients,
+                                      content)
+            if retval != RETURN_CODES['EX_OK']:
+                log.error("Error %s while sending to %s", retval, recipients)
+                return retval
+            # after sending, so a retried message is archived once
             self.write_to_archive(from_email, content)
-
-            # If there are any addresses to always send to
-            if self.also_send_to != ['']:
-                retval = self.send_emails(
-                    'owner-' + role_email, self.also_send_to, content)
-                if retval != RETURN_CODES['EX_OK']:
-                    log.error("Error %s while sending to %s",
-                              retval, self.also_send_to)
-                    return retval
-
-            # Send e-mails
-            for emails in email_batches:
-                retval = self.send_emails(
-                    'owner-' + role_email, emails, content)
-                if retval != RETURN_CODES['EX_OK']:
-                    log.error("Error %s while sending to %s",
-                              retval, emails)
-                    return retval
             if not self.skip_confirmation_email:
                 try:
                     retval = self.send_confirmation_email(
@@ -669,8 +652,8 @@ class Expander(object):
             ps.stdin.flush()
             ps.stdin.close()
             return_code = ps.wait()
-            if return_code in (RETURN_CODES['EX_OK'],
-                               RETURN_CODES['EX_TEMPFAIL']):
+            # EX_TEMPFAIL means nothing was queued: Postfix retries the message
+            if return_code == RETURN_CODES['EX_OK']:
                 log.debug("Sent emails to %r", emails)
                 return RETURN_CODES['EX_OK']
             else:

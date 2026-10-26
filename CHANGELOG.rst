@@ -1,5 +1,9 @@
 1.00 (unreleased)
 ======================
+* Fix the Subject: tag being added again on every reply to the list [valipod]
+* Send to all members, also_send_to and owners in one sendmail call instead
+  of batches of 50, and return EX_TEMPFAIL from sendmail to Postfix, so
+  the message is retried without duplicates instead of being lost [valipod]
 * Fix oversized/empty Subject: tag with the list address, not the To: header [valipod]
 * Change: route owner-addressed delivery-failure notices (null-sender DSNs)
   to bounce_send_to/no_owner_send_to instead of fanning them out to each role's
