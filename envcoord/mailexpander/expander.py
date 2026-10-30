@@ -726,6 +726,17 @@ def usage():
     sys.exit(RETURN_CODES['EX_USAGE'])
 
 
+def init_sentry(dsn, environment):
+    """ Send the ERROR log records, with their tracebacks, to Sentry """
+    from raven import Client
+    from raven.handlers.logging import SentryHandler
+    from raven.transport.http import HTTPTransport
+    # synchronous: the process exits right after the message is handled
+    client = Client(dsn, transport=HTTPTransport, environment=environment,
+                    install_sys_hook=False, install_logging_hook=False)
+    log.addHandler(SentryHandler(client, level=logging.ERROR))
+
+
 def main():
     # Don't return log to output when in mailer
 
@@ -781,6 +792,11 @@ def main():
         if not debug_mode:
             log.setLevel(logging.INFO)
         log.addHandler(log_handler)
+
+    sentry_dsn = expander_config.get('sentry_dsn', '').strip()
+    if sentry_dsn and not debug_mode:
+        init_sentry(sentry_dsn,
+                    expander_config.get('sentry_environment', 'production'))
 
     log.debug("=========== starting rolesmailer ============")
     try:

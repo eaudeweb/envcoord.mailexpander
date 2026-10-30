@@ -1,5 +1,6 @@
 1.00 (unreleased)
 ======================
+* Send errors to Sentry when sentry_dsn is set [valipod]
 * Fix the Subject: tag being added again on every reply to the list [valipod]
 * Send to all members, also_send_to and owners in one sendmail call instead
   of batches of 50, and return EX_TEMPFAIL from sendmail to Postfix, so

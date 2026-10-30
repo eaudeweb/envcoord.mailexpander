@@ -20,6 +20,10 @@ no-reply: no-reply@envcoord.health.fgov.be
 # only apply the filter to roles starting with:
 ;roles_to_filter: test,test2
 
+# send errors to Sentry
+;sentry_dsn: https://<key>@sentry.example.com/<project>
+;sentry_environment: production
+
 [ldap]
 ldap_server: ldap://127.0.0.1:389
 users_dn: ou=Users,ou=DATA,ou=america,o=IRCusers,dc=CIRCA,dc=local

@@ -3,7 +3,7 @@
 
 from copy import deepcopy
 from envcoord.mailexpander.expander import Expander, RETURN_CODES, log
-from mock import Mock
+from mock import Mock, patch
 from test_ldap_agent import StubbedLdapAgent
 import email
 import ldap
@@ -971,6 +971,39 @@ class SendmailTest(unittest.TestCase):
                                   'test@roles.eionet.europa.eu',
                                   self.fixtures['content_7bit'])
         self.assertEqual(rc, 1)
+
+
+class SentryTest(unittest.TestCase):
+    """ init_sentry sends the errors logged by expand() to Sentry """
+
+    def setUp(self):
+        fixture = ExpanderTest('test_batch')
+        fixture.setUp()
+        self.expander = fixture.expander
+        self.fixtures = fixture.fixtures
+        self.handlers = list(log.handlers)
+        self.addCleanup(self.restore_handlers)
+
+    def restore_handlers(self):
+        for handler in log.handlers[:]:
+            if handler not in self.handlers:
+                log.removeHandler(handler)
+
+    def test_error_sent(self):
+        from raven.transport.http import HTTPTransport
+        from envcoord.mailexpander.expander import init_sentry
+        log.setLevel(logging.INFO)
+        self.addCleanup(log.setLevel, logging.CRITICAL)
+        init_sentry('https://abc@sentry.example.com/19', 'production')
+        self.expander.can_expand = Mock(side_effect=RuntimeError('boom'))
+        with patch.object(HTTPTransport, 'send') as send:
+            rc = self.expander.expand('user_one@example.com',
+                                      'test@roles.eionet.europa.eu',
+                                      self.fixtures['content_7bit'])
+        self.assertEqual(rc, RETURN_CODES['EX_SOFTWARE'])
+        self.assertEqual(send.call_count, 1)
+        url = send.call_args[0][0]
+        self.assertEqual(url, 'https://sentry.example.com/api/19/store/')
 
 
 if __name__ == '__main__':
